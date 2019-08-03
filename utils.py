@@ -2,6 +2,27 @@ import torch
 import torch.nn as nn
 import torch.nn.init as init
 
+class PairwiseRankingLoss(nn.Module):
+    def __init__(self, margin=1.0):
+        super(PairwiseRankingLoss, self).__init__()
+        self.margin = margin
+
+    # im, sen : (n_samples, dim)
+    def forward(self, im, sen):
+        n_samples = im.size(0)
+        # sim_mat : (n_samples, n_samples)
+        sim_mat = torch.mm(im, sen.t())
+        # sim_mat : (n_samples)
+        positive = sim_mat.diag()
+        mask = torch.ones_like(sim_mat) - torch.eye(n_samples).to(device=sim_mat.device)
+        # negative1, 2 : (n_samples)
+        negative1, _ = torch.max(sim_mat * mask, dim=1)
+        negative2, _ = torch.max(sim_mat * mask, dim=0)
+        loss = torch.clamp(positive - negative1 + self.margin, min=0).sum()
+        loss += torch.clamp(positive - negative2 + self.margin, min=0).sum()
+        return loss
+
+
 def weight_init(m):
     '''
     Usage:

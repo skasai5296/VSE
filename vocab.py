@@ -1,5 +1,4 @@
 import sys, os
-sys.path.append(os.pardir)
 import time
 import json
 import pickle
@@ -30,6 +29,7 @@ class Vocabulary():
         sent_proc = list(map(self.text_proc.preprocess, sentences))
         self.text_proc.build_vocab(sent_proc, min_freq=self.min_freq)
         self.len = len(self.text_proc.vocab)
+        self.padidx = self.text_proc.vocab.stoi["<pad>"]
         print("done building vocabulary, minimum frequency is {} times".format(self.min_freq), flush=True)
         print("{} | # of words in vocab: {}".format(sec2str(time.time() - before), self.len), flush=True)
 
@@ -79,3 +79,5 @@ if __name__ == '__main__':
     print(ten)
     sent = vocab.return_sentences(ten)
     print(sent)
+
+

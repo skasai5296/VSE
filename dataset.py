@@ -18,16 +18,16 @@ sp = spacy.load("en_core_web_sm")
 class CocoDataset(Dataset):
     """COCO Custom Dataset compatible with torch.utils.data.DataLoader."""
 
-    def __init__(self, root, jsonfile, transform=None, ids=None):
+    def __init__(self, root, imgdir='train2017', jsonfile='annotations/captions_train2017.json', transform=None, ids=None):
         """
         Args:
-            root: image directory.
+            root: root directory.
             json: coco annotation file path.
             transform: transformer for image.
-        """
+        /home/seito/hdd/dsets/coco/train2017 """
         # when using `restval`, two json files are needed
-        self.coco = COCO(jsonfile)
-        self.root = root
+        self.coco = COCO(os.path.join(root, jsonfile))
+        self.img_dir = os.path.join(root, imgdir)
         # if ids provided by get_paths, use split-specific ids
         if ids is None:
             self.ids = list(self.coco.anns.keys())
@@ -58,7 +58,7 @@ class CocoDataset(Dataset):
         caption = self.coco.anns[ann_id]['caption']
         img_id = self.coco.anns[ann_id]['image_id']
         path = self.coco.loadImgs(img_id)[0]['file_name']
-        image = Image.open(os.path.join(self.root, path)).convert('RGB')
+        image = Image.open(os.path.join(self.img_dir, path)).convert('RGB')
 
         return caption, img_id, path, image
 
@@ -116,6 +116,6 @@ if __name__ == '__main__':
         transforms.Normalize(mean=[0.485, 0.456, 0.406],
                              std=[0.229, 0.224, 0.225])
         ])
-    cocodset = CocoDataset(root="/home/seito/hdd/dsets/coco/train2017", jsonfile="/home/seito/hdd/dsets/coco/annotations/captions_train2017.json", transform=transform)
+    cocodset = CocoDataset(root="/home/seito/hdd/dsets/coco", transform=transform)
     print(cocodset[1])
 
