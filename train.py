@@ -2,6 +2,7 @@ import sys, os
 import argparse
 import time
 
+import numpy as np
 import torch
 import torch.nn as nn
 import torch.optim as optim
@@ -43,6 +44,8 @@ def train(epoch, loader, imenc, capenc, optimizer, lossfunc, vocab, args):
         cumloss += lossval.item()
         if it % args.log_every == args.log_every-1:
             print("epoch {} | {} | {:06d}/{:06d} iterations | loss: {:.04f}".format(epoch, sec2str(time.time()-begin), it+1, maxit, lossval))
+        if it % 100 == 99:
+            break
     return cumloss / maxit
 
 def validate(epoch, loader, imenc, capenc, vocab, args):
@@ -60,12 +63,21 @@ def validate(epoch, loader, imenc, capenc, vocab, args):
     # im2cap
     cpu_index.add(cap)
     print("db size: {}, dimension: {}".format(cpu_index.ntotal, cpu_index.d), flush=True)
-    D, I = cpu_index.search(im, 10)
-    r1 = np.sum(D[:, :1] == np.arange(nq)) / nq
-    print("recall@1: {}".format(r1))
+    D, I = cpu_index.search(im, nd)
+    data = {}
+    allrank = np.where(I == np.arange(nq).reshape(-1, 1))[1]
+    print(allrank)
+    for rank in [1, 5, 10, 20]:
+        data["recall@{}".format(rank)] = 100 * np.sum(allrank < rank) / nq
+    data["median@r"] = np.median(allrank) + 1
+    print("-"*50)
+    print("epoch {} done".format(epoch))
+    for key, val in data.items():
+        print("{}: {}".format(key, val), flush=True)
+    print("-"*50)
 
     # cap2im
-    return r1
+    return data
 
 def main():
     args = parse_args()
@@ -100,12 +112,8 @@ def main():
     lossfunc = PairwiseRankingLoss(margin=args.margin)
 
     for ep in range(args.max_epochs):
-        #avgloss = train(ep+1, train_loader, imenc, capenc, optimizer, lossfunc, vocab, args)
-        avgloss = 0
-        r1 = validate(ep+1, val_loader, imenc, capenc, vocab, args)
-        print("-"*50)
-        print("epoch {} done, average epoch loss: {}, recall@1: {}".format(ep+1, avgloss, r1))
-        print("-"*50)
+        avgloss = train(ep+1, train_loader, imenc, capenc, optimizer, lossfunc, vocab, args)
+        data = validate(ep+1, val_loader, imenc, capenc, vocab, args)
 
 
 def parse_args():

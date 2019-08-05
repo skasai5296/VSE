@@ -130,7 +130,7 @@ class EmbedDataset(Dataset):
             caption = caption.to(device)
             with torch.no_grad():
                 emb_im = image_model(im)
-                emb_cap = caption_model(im, lengths)
+                emb_cap = caption_model(caption, lengths)
             self.embedded["image"].append(emb_im.cpu().numpy())
             self.embedded["caption"].append(emb_cap.cpu().numpy())
             self.embedded["id"].extend(id)
