@@ -8,7 +8,7 @@ class PairwiseRankingLoss(nn.Module):
         self.margin = margin
 
     # im, sen : (n_samples, dim)
-    def forward(self, im, sen, method='sum'):
+    def forward(self, im, sen, method='max'):
         n_samples = im.size(0)
         # sim_mat : (n_samples, n_samples)
         sim_mat = torch.mm(im, sen.t())
@@ -23,8 +23,8 @@ class PairwiseRankingLoss(nn.Module):
             negative2, _ = torch.max(sim_mat * mask, dim=0)
         # sum of hinges loss
         elif method == "sum":
-            negative1, _ = torch.mean(sim_mat * mask, dim=1)
-            negative2, _ = torch.mean(sim_mat * mask, dim=0)
+            negative1 = torch.mean(sim_mat * mask, dim=1)
+            negative2 = torch.mean(sim_mat * mask, dim=0)
 
         loss = torch.clamp(positive - negative1 + self.margin, min=0).sum()
         loss += torch.clamp(positive - negative2 + self.margin, min=0).sum()

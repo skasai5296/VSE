@@ -103,6 +103,8 @@ def main():
 
     imenc = imenc.to(device)
     capenc = capenc.to(device)
+    imenc = nn.DataParallel(imenc)
+    capenc = nn.DataParallel(capenc)
 
     optimizer = optim.SGD([
         {'params' : imenc.parameters(), 'lr' : args.lr_cnn, 'momentum' : args.mom_cnn},
@@ -137,12 +139,12 @@ def parse_args():
     parser.add_argument('--out_size', type=int, default=256, help="embedding size for output vectors")
     parser.add_argument('--max_epochs', type=int, default=50)
     parser.add_argument('--max_len', type=int, default=30)
-    parser.add_argument('--log_every', type=int, default=10, help="log every x iterations")
+    parser.add_argument('--log_every', type=int, default=100, help="log every x iterations")
     parser.add_argument('--no_cuda', action='store_true', help="log every x iterations")
 
     # hyperparams
     parser.add_argument('--imsize', type=int, default=224)
-    parser.add_argument('--batch_size', type=int, default=256)
+    parser.add_argument('--batch_size', type=int, default=512)
     parser.add_argument('--lr_cnn', type=float, default=1e-2)
     parser.add_argument('--mom_cnn', type=float, default=0.9)
     parser.add_argument('--lr_rnn', type=float, default=1e-2)
