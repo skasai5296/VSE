@@ -44,8 +44,6 @@ def train(epoch, loader, imenc, capenc, optimizer, lossfunc, vocab, args):
         cumloss += lossval.item()
         if it % args.log_every == args.log_every-1:
             print("epoch {} | {} | {:06d}/{:06d} iterations | loss: {:.04f}".format(epoch, sec2str(time.time()-begin), it+1, maxit, lossval))
-        if it % 100 == 99:
-            break
     return cumloss / maxit
 
 def validate(epoch, loader, imenc, capenc, vocab, args):
@@ -68,6 +66,7 @@ def validate(epoch, loader, imenc, capenc, vocab, args):
     allrank = np.where(I == np.arange(nq).reshape(-1, 1))[1]
     print(allrank)
     for rank in [1, 5, 10, 20]:
+        data["randomrecall@{}".format(rank)] = 100 * rank / nq
         data["recall@{}".format(rank)] = 100 * np.sum(allrank < rank) / nq
     data["median@r"] = np.median(allrank) + 1
     print("-"*50)
@@ -124,6 +123,7 @@ def parse_args():
     parser.add_argument('--root_path', type=str, default='/home/seito/hdd/dsets/coco')
     parser.add_argument('--vocab_path', type=str, default='captions_train2017.txt')
     parser.add_argument('--model_path', type=str, default='../models', help='Path to read models from when training / testing')
+    parser.add_argument('--checkpoint', type=str, help='Path to checkpoint if any, will restart training from there')
     parser.add_argument('--model_save_path', type=str, default='../models', help='Path to save models to when training')
 
     # configurations of models
@@ -131,13 +131,13 @@ def parse_args():
     parser.add_argument('--rnn_type', type=str, default="LSTM")
 
     # training config
-    parser.add_argument('--n_cpu', type=int, default=4)
-    parser.add_argument('--margin', type=float, default=1.0)
+    parser.add_argument('--n_cpu', type=int, default=8)
+    parser.add_argument('--margin', type=float, default=0.2)
     parser.add_argument('--emb_size', type=int, default=256, help="embedding size of vocabulary")
     parser.add_argument('--out_size', type=int, default=256, help="embedding size for output vectors")
     parser.add_argument('--max_epochs', type=int, default=50)
     parser.add_argument('--max_len', type=int, default=30)
-    parser.add_argument('--log_every', type=int, default=1, help="log every x iterations")
+    parser.add_argument('--log_every', type=int, default=10, help="log every x iterations")
     parser.add_argument('--no_cuda', action='store_true', help="log every x iterations")
 
     # hyperparams
