@@ -109,6 +109,37 @@ class FlickrDataset(Dataset):
     def __len__(self):
         return len(self.ids)
 
+class EmbedDataset(Dataset):
+    """Dataset to create when evaluating model"""
+
+    def __init__(self, loader, image_model, caption_model, vocab, args):
+        """
+        Args:
+            loader: DataLoader for validation images and captions
+            model: trained model to evaluate
+        """
+        device = torch.device("cuda" if torch.cuda.is_available() and not args.no_cuda else "cpu")
+        self.embedded = {"image": [], "caption": [], "id": []}
+        for data in loader:
+            im = data["image"]
+            caption = data["caption"]
+            caption = vocab.return_idx(caption)
+            id = data["id"]
+            lengths = caption.ne(vocab.padidx).sum(dim=1)
+            im = im.to(device)
+            caption = caption.to(device)
+            with torch.no_grad():
+                emb_im = image_model(im)
+                emb_cap = caption_model(im, lengths)
+            self.embedded["image"].append(emb_im.cpu().numpy())
+            self.embedded["caption"].append(emb_cap.cpu().numpy())
+            self.embedded["id"].extend(id)
+        self.embedded["image"] = np.concatenate(self.embedded["image"])
+        self.embedded["caption"] = np.concatenate(self.embedded["caption"])
+
+    def __len__(self):
+        return self.embedded["caption"].shape[0]
+
 if __name__ == '__main__':
     transform = transforms.Compose([
         transforms.Resize((224, 224)),

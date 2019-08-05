@@ -8,8 +8,9 @@ import torch.optim as optim
 from torch.utils.data import DataLoader
 import torchvision
 import torchvision.transforms as transforms
+import faiss
 
-from dataset import CocoDataset
+from dataset import CocoDataset, EmbedDataset
 from utils import sec2str, PairwiseRankingLoss
 from model import ImageEncoder, CaptionEncoder
 from vocab import Vocabulary
@@ -46,29 +47,25 @@ def train(epoch, loader, imenc, capenc, optimizer, lossfunc, vocab, args):
 
 def validate(epoch, loader, imenc, capenc, vocab, args):
     begin = time.time()
-    maxit = int(len(loader.dataset) / args.batch_size)
-    device = torch.device("cuda" if torch.cuda.is_available() and not args.no_cuda else "cpu")
-    for it, data in enumerate(loader):
-        """image, target, index, img_id"""
-        image = data["image"]
-        caption = data["caption"]
-        index = data["index"]
-        id = data["id"]
-        target = vocab.return_idx(caption)
-        lengths = target.ne(vocab.padidx).sum(dim=1)
+    print("begin validation for epoch {}".format(epoch), flush=True)
+    dset = EmbedDataset(loader, imenc, capenc, vocab, args)
+    print("val dataset created | {} ".format(sec2str(time.time()-begin)), flush=True)
+    im = dset.embedded["image"]
+    cap = dset.embedded["caption"]
+    nd = len(dset)
+    nq = len(dset)
+    d = im.shape[1]
+    cpu_index = faiss.IndexFlatIP(d)
 
-        image = image.cuda()
-        target = target.cuda()
+    # im2cap
+    cpu_index.add(cap)
+    print("db size: {}, dimension: {}".format(cpu_index.ntotal, cpu_index.d), flush=True)
+    D, I = cpu_index.search(im, 10)
+    r1 = np.sum(D[:, :1] == np.arange(nq)) / nq
+    print("recall@1: {}".format(r1))
 
-        im_emb = imenc(image)
-        cap_emb = capenc(target, lengths)
-        lossval = lossfunc(im_emb, cap_emb)
-        lossval.backward()
-        optimizer.step()
-        cumloss += lossval.item()
-        if it % args.log_every == args.log_every-1:
-            print("epoch {} | {} | {:05d}/{:05d} iterations | loss: {:.04f}".format(epoch, sec2str(time.time()-begin), it+1, maxit, lossval))
-    return cumloss / maxit
+    # cap2im
+    return r1
 
 def main():
     args = parse_args()
@@ -103,9 +100,11 @@ def main():
     lossfunc = PairwiseRankingLoss(margin=args.margin)
 
     for ep in range(args.max_epochs):
-        avgloss = train(ep+1, train_loader, imenc, capenc, optimizer, lossfunc, vocab, args)
+        #avgloss = train(ep+1, train_loader, imenc, capenc, optimizer, lossfunc, vocab, args)
+        avgloss = 0
+        r1 = validate(ep+1, val_loader, imenc, capenc, vocab, args)
         print("-"*50)
-        print("epoch {} done, average epoch loss: {}".format(ep+1, avgloss))
+        print("epoch {} done, average epoch loss: {}, recall@1: {}".format(ep+1, avgloss, r1))
         print("-"*50)
 
 
