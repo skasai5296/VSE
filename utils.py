@@ -11,23 +11,29 @@ class PairwiseRankingLoss(nn.Module):
     def forward(self, im, sen, method='max'):
         n_samples = im.size(0)
         # sim_mat : (n_samples, n_samples)
-        sim_mat = torch.mm(im, sen.t())
-        # sim_mat : (n_samples)
-        positive = sim_mat.diag()
-        mask = torch.ones_like(sim_mat) - torch.eye(n_samples).to(device=sim_mat.device)
-        # negative1, 2 : (n_samples)
+        sim_mat = im.mm(sen.t())
+        # pos : (n_samples, 1)
+        pos = sim_mat.diag().view(-1, 1)
+        # positive1, 2 : (n_samples, n_samples)
+        positive1 = pos.expand_as(sim_mat)
+        positive2 = pos.t().expand_as(sim_mat)
 
+        mask = (torch.eye(n_samples) > 0.5).to(sim_mat.device)
+        # lossmat : (n_samples, n_samples)
+        # caption negatives (fill diagonals with 0)
+        lossmat_i = (self.margin + sim_mat - positive1).clamp(min=0).masked_fill(mask, 0)
+        # image negatives (fill diagonals with 0)
+        lossmat_c = (self.margin + sim_mat - positive2).clamp(min=0).masked_fill(mask, 0)
         # max of hinges loss
         if method == "max":
-            negative1, _ = torch.max(sim_mat * mask, dim=1)
-            negative2, _ = torch.max(sim_mat * mask, dim=0)
+            # lossmat : (n_samples)
+            lossmat_i = lossmat_i.max(dim=1)[0]
+            lossmat_c = lossmat_c.max(dim=0)[0]
         # sum of hinges loss
         elif method == "sum":
-            negative1 = torch.mean(sim_mat * mask, dim=1)
-            negative2 = torch.mean(sim_mat * mask, dim=0)
+            pass
 
-        loss = torch.clamp(positive - negative1 + self.margin, min=0).sum()
-        loss += torch.clamp(positive - negative2 + self.margin, min=0).sum()
+        loss = lossmat_i.sum() + lossmat_c.sum()
         return loss
 
 

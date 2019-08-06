@@ -43,8 +43,9 @@ def train(epoch, loader, imenc, capenc, optimizer, lossfunc, vocab, args):
         optimizer.step()
         cumloss += lossval.item()
         if it % args.log_every == args.log_every-1:
-            print("epoch {} | {} | {:06d}/{:06d} iterations | loss: {:.04f}".format(epoch, sec2str(time.time()-begin), it+1, maxit, lossval))
-    return cumloss / maxit
+            print("epoch {} | {} | {:06d}/{:06d} iterations | loss: {:.08f}".format(epoch, sec2str(time.time()-begin), it+1, maxit, cumloss/args.log_every), flush=True)
+            cumloss = 0
+    return imenc, capenc, optimizer
 
 def validate(epoch, loader, imenc, capenc, vocab, args):
     begin = time.time()
@@ -64,18 +65,32 @@ def validate(epoch, loader, imenc, capenc, vocab, args):
     D, I = cpu_index.search(im, nd)
     data = {}
     allrank = np.where(I == np.arange(nq).reshape(-1, 1))[1]
-    print(allrank)
     for rank in [1, 5, 10, 20]:
         data["randomrecall@{}".format(rank)] = 100 * rank / nq
         data["recall@{}".format(rank)] = 100 * np.sum(allrank < rank) / nq
     data["median@r"] = np.median(allrank) + 1
     print("-"*50)
-    print("epoch {} done".format(epoch))
+    print("results of image-to-text retrieval")
     for key, val in data.items():
         print("{}: {}".format(key, val), flush=True)
     print("-"*50)
 
     # cap2im
+    cpu_index.reset()
+    cpu_index.add(im)
+    print("db size: {}, dimension: {}".format(cpu_index.ntotal, cpu_index.d), flush=True)
+    D, I = cpu_index.search(cap, nd)
+    data = {}
+    allrank = np.where(I == np.arange(nq).reshape(-1, 1))[1]
+    for rank in [1, 5, 10, 20]:
+        data["randomrecall@{}".format(rank)] = 100 * rank / nq
+        data["recall@{}".format(rank)] = 100 * np.sum(allrank < rank) / nq
+    data["median@r"] = np.median(allrank) + 1
+    print("-"*50)
+    print("results of text-to-image retrieval")
+    for key, val in data.items():
+        print("{}: {}".format(key, val), flush=True)
+    print("-"*50)
     return data
 
 def main():
@@ -113,7 +128,7 @@ def main():
     lossfunc = PairwiseRankingLoss(margin=args.margin)
 
     for ep in range(args.max_epochs):
-        avgloss = train(ep+1, train_loader, imenc, capenc, optimizer, lossfunc, vocab, args)
+        imenc, capenc, optimizer = train(ep+1, train_loader, imenc, capenc, optimizer, lossfunc, vocab, args)
         data = validate(ep+1, val_loader, imenc, capenc, vocab, args)
 
 
@@ -133,21 +148,21 @@ def parse_args():
     parser.add_argument('--rnn_type', type=str, default="LSTM")
 
     # training config
-    parser.add_argument('--n_cpu', type=int, default=8)
+    parser.add_argument('--n_cpu', type=int, default=4)
     parser.add_argument('--margin', type=float, default=0.2)
     parser.add_argument('--emb_size', type=int, default=256, help="embedding size of vocabulary")
     parser.add_argument('--out_size', type=int, default=256, help="embedding size for output vectors")
     parser.add_argument('--max_epochs', type=int, default=50)
     parser.add_argument('--max_len', type=int, default=30)
-    parser.add_argument('--log_every', type=int, default=100, help="log every x iterations")
+    parser.add_argument('--log_every', type=int, default=10, help="log every x iterations")
     parser.add_argument('--no_cuda', action='store_true', help="log every x iterations")
 
     # hyperparams
     parser.add_argument('--imsize', type=int, default=224)
-    parser.add_argument('--batch_size', type=int, default=512)
-    parser.add_argument('--lr_cnn', type=float, default=1e-2)
+    parser.add_argument('--batch_size', type=int, default=256)
+    parser.add_argument('--lr_cnn', type=float, default=2e-4)
     parser.add_argument('--mom_cnn', type=float, default=0.9)
-    parser.add_argument('--lr_rnn', type=float, default=1e-2)
+    parser.add_argument('--lr_rnn', type=float, default=2e-4)
     parser.add_argument('--mom_rnn', type=float, default=0.9)
     parser.add_argument('--weight_decay', type=float, default=1e-4)
     parser.add_argument('--patience', type=int, default=10)
