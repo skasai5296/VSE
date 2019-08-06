@@ -45,7 +45,6 @@ def train(epoch, loader, imenc, capenc, optimizer, lossfunc, vocab, args):
         if it % args.log_every == args.log_every-1:
             print("epoch {} | {} | {:06d}/{:06d} iterations | loss: {:.08f}".format(epoch, sec2str(time.time()-begin), it+1, maxit, cumloss/args.log_every), flush=True)
             cumloss = 0
-            break
     return imenc, capenc, optimizer
 
 def validate(epoch, loader, imenc, capenc, vocab, args):
@@ -60,35 +59,27 @@ def validate(epoch, loader, imenc, capenc, vocab, args):
     d = im.shape[1]
     cpu_index = faiss.IndexFlatIP(d)
 
+    print("# instances: {}, dimension: {}".format(nd, d), flush=True)
     # im2cap
     cpu_index.add(cap)
-    print("db size: {}, dimension: {}".format(cpu_index.ntotal, cpu_index.d), flush=True)
     D, I = cpu_index.search(im, nd)
     data = {}
     allrank = np.where(I == np.arange(nq).reshape(-1, 1))[1]
     for rank in [1, 5, 10, 20]:
-        data["randomrecall@{}".format(rank)] = 100 * rank / nq
-        data["recall@{}".format(rank)] = 100 * np.sum(allrank < rank) / nq
-    data["median@r"] = np.median(allrank) + 1
-    print("-"*50)
-    print("results of image-to-text retrieval")
-    for key, val in data.items():
-        print("{}: {}".format(key, val), flush=True)
-    print("-"*50)
+        data["i2c_recall@{}".format(rank)] = 100 * np.sum(allrank < rank) / nq
+    data["i2c_median@r"] = np.median(allrank) + 1
 
     # cap2im
     cpu_index.reset()
     cpu_index.add(im)
-    print("db size: {}, dimension: {}".format(cpu_index.ntotal, cpu_index.d), flush=True)
     D, I = cpu_index.search(cap, nd)
-    data = {}
     allrank = np.where(I == np.arange(nq).reshape(-1, 1))[1]
     for rank in [1, 5, 10, 20]:
-        data["randomrecall@{}".format(rank)] = 100 * rank / nq
-        data["recall@{}".format(rank)] = 100 * np.sum(allrank < rank) / nq
-    data["median@r"] = np.median(allrank) + 1
+        data["c2i_recall@{}".format(rank)] = 100 * np.sum(allrank < rank) / nq
+    data["c2i_median@r"] = np.median(allrank) + 1
+
     print("-"*50)
-    print("results of text-to-image retrieval")
+    print("results of cross-modal retrieval")
     for key, val in data.items():
         print("{}: {}".format(key, val), flush=True)
     print("-"*50)
@@ -140,12 +131,13 @@ def main():
     imenc = nn.DataParallel(imenc)
     capenc = nn.DataParallel(capenc)
 
+    assert offset < args.max_epochs
     for ep in range(offset, args.max_epochs):
         imenc, capenc, optimizer = train(ep+1, train_loader, imenc, capenc, optimizer, lossfunc, vocab, args)
         data = validate(ep+1, val_loader, imenc, capenc, vocab, args)
         totalscore = 0
         for rank in [1, 5, 10, 20]:
-            totalscore += data["recall@{}".format(rank)]
+            totalscore += data["i2c_recall@{}".format(rank)] + data["c2i_recall@{}".format(rank)]
         scheduler.step(totalscore)
 
         # save checkpoint
@@ -157,10 +149,12 @@ def main():
                 "optimizer_state": optimizer.state_dict(),
                 "scheduler_state": scheduler.state_dict()
                 }
-        savepath = os.path.join(args.model_save_path, "epoch_{:04d}_score_{:03.02f}.ckpt".format(ep+1, totalscore))
         if not os.path.exists(args.model_save_path):
-            os.makedirs(savepath)
+            os.makedirs(args.model_save_path)
+        savepath = os.path.join(args.model_save_path, "epoch_{:04d}_score_{:05d}.ckpt".format(ep+1, int(100*totalscore)))
+        print("saving model and optimizer checkpoint to {} ...".format(savepath), flush=True)
         torch.save(ckpt, savepath)
+        print("done for epoch {}".format(ep+1), flush=True)
 
 
 def parse_args():
@@ -171,7 +165,7 @@ def parse_args():
     parser.add_argument('--root_path', type=str, default='/home/seito/hdd/dsets/coco')
     parser.add_argument('--vocab_path', type=str, default='captions_train2017.txt')
     parser.add_argument('--checkpoint', type=str, default=None, help='Path to checkpoint if any, will restart training from there')
-    parser.add_argument('--model_save_path', type=str, default='../models/', help='Path to save models to when training')
+    parser.add_argument('--model_save_path', type=str, default='models/', help='Path to save models to when training')
 
     # configurations of models
     parser.add_argument('--cnn_type', type=str, default="resnet18")
@@ -189,13 +183,13 @@ def parse_args():
 
     # hyperparams
     parser.add_argument('--imsize', type=int, default=224)
-    parser.add_argument('--batch_size', type=int, default=256)
-    parser.add_argument('--lr_cnn', type=float, default=2e-4)
+    parser.add_argument('--batch_size', type=int, default=512)
+    parser.add_argument('--lr_cnn', type=float, default=1e-3)
     parser.add_argument('--mom_cnn', type=float, default=0.9)
-    parser.add_argument('--lr_rnn', type=float, default=2e-4)
+    parser.add_argument('--lr_rnn', type=float, default=1e-3)
     parser.add_argument('--mom_rnn', type=float, default=0.9)
     parser.add_argument('--weight_decay', type=float, default=1e-4)
-    parser.add_argument('--patience', type=int, default=10)
+    parser.add_argument('--patience', type=int, default=5)
 
     args = parser.parse_args()
 

@@ -34,7 +34,7 @@ class PairwiseRankingLoss(nn.Module):
         elif method == "sum":
             pass
 
-        loss = lossmat_i.sum() + lossmat_c.sum()
+        loss = (lossmat_i.sum() + lossmat_c.sum()) / n_samples
         return loss
 
 
