@@ -18,11 +18,12 @@ class PairwiseRankingLoss(nn.Module):
         positive1 = pos.expand_as(sim_mat)
         positive2 = pos.t().expand_as(sim_mat)
 
+        # mask for diagonals
         mask = (torch.eye(n_samples) > 0.5).to(sim_mat.device)
         # lossmat : (n_samples, n_samples)
-        # caption negatives (fill diagonals with 0)
+        # caption negatives
         lossmat_i = (self.margin + sim_mat - positive1).clamp(min=0).masked_fill(mask, 0)
-        # image negatives (fill diagonals with 0)
+        # image negatives
         lossmat_c = (self.margin + sim_mat - positive2).clamp(min=0).masked_fill(mask, 0)
         # max of hinges loss
         if method == "max":

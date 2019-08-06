@@ -45,6 +45,7 @@ def train(epoch, loader, imenc, capenc, optimizer, lossfunc, vocab, args):
         if it % args.log_every == args.log_every-1:
             print("epoch {} | {} | {:06d}/{:06d} iterations | loss: {:.08f}".format(epoch, sec2str(time.time()-begin), it+1, maxit, cumloss/args.log_every), flush=True)
             cumloss = 0
+            break
     return imenc, capenc, optimizer
 
 def validate(epoch, loader, imenc, capenc, vocab, args):
@@ -118,18 +119,48 @@ def main():
 
     imenc = imenc.to(device)
     capenc = capenc.to(device)
-    imenc = nn.DataParallel(imenc)
-    capenc = nn.DataParallel(capenc)
 
     optimizer = optim.SGD([
         {'params' : imenc.parameters(), 'lr' : args.lr_cnn, 'momentum' : args.mom_cnn},
         {'params' : capenc.parameters(), 'lr' : args.lr_rnn, 'momentum' : args.mom_rnn}
         ])
+    scheduler = optim.lr_scheduler.ReduceLROnPlateau(optimizer, mode='max', factor=0.1, patience=args.patience, verbose=True)
     lossfunc = PairwiseRankingLoss(margin=args.margin)
 
-    for ep in range(args.max_epochs):
+    if args.checkpoint is not None:
+        print("loading model and optimizer checkpoint from {} ...".format(args.checkpoint), flush=True)
+        ckpt = torch.load(args.checkpoint)
+        imenc.load_state_dict(ckpt["encoder_state"])
+        capenc.load_state_dict(ckpt["decoder_state"])
+        optimizer.load_state_dict(ckpt["optimizer_state"])
+        scheduler.load_state_dict(ckpt["scheduler_state"])
+        offset = ckpt["epoch"]
+    else:
+        offset = 0
+    imenc = nn.DataParallel(imenc)
+    capenc = nn.DataParallel(capenc)
+
+    for ep in range(offset, args.max_epochs):
         imenc, capenc, optimizer = train(ep+1, train_loader, imenc, capenc, optimizer, lossfunc, vocab, args)
         data = validate(ep+1, val_loader, imenc, capenc, vocab, args)
+        totalscore = 0
+        for rank in [1, 5, 10, 20]:
+            totalscore += data["recall@{}".format(rank)]
+        scheduler.step(totalscore)
+
+        # save checkpoint
+        ckpt = {
+                "stats": data,
+                "epoch": ep+1,
+                "encoder_state": imenc.module.state_dict(),
+                "decoder_state": capenc.module.state_dict(),
+                "optimizer_state": optimizer.state_dict(),
+                "scheduler_state": scheduler.state_dict()
+                }
+        savepath = os.path.join(args.model_save_path, "epoch_{:04d}_score_{:03.02f}.ckpt".format(ep+1, totalscore))
+        if not os.path.exists(args.model_save_path):
+            os.makedirs(savepath)
+        torch.save(ckpt, savepath)
 
 
 def parse_args():
@@ -139,9 +170,8 @@ def parse_args():
     parser.add_argument('--dataset', type=str, default='coco')
     parser.add_argument('--root_path', type=str, default='/home/seito/hdd/dsets/coco')
     parser.add_argument('--vocab_path', type=str, default='captions_train2017.txt')
-    parser.add_argument('--model_path', type=str, default='../models', help='Path to read models from when training / testing')
-    parser.add_argument('--checkpoint', type=str, help='Path to checkpoint if any, will restart training from there')
-    parser.add_argument('--model_save_path', type=str, default='../models', help='Path to save models to when training')
+    parser.add_argument('--checkpoint', type=str, default=None, help='Path to checkpoint if any, will restart training from there')
+    parser.add_argument('--model_save_path', type=str, default='../models/', help='Path to save models to when training')
 
     # configurations of models
     parser.add_argument('--cnn_type', type=str, default="resnet18")
