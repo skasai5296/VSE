@@ -15,37 +15,38 @@ from vocab import Vocabulary
 
 sp = spacy.load("en_core_web_sm")
 
+
 class CocoDataset(Dataset):
     """COCO Custom Dataset compatible with torch.utils.data.DataLoader."""
 
-    def __init__(self, root, imgdir='train2017', jsonfile='annotations/captions_train2017.json', transform=None, ids=None):
+    def __init__(self, root, imgdir='train2017', jsonfile='annotations/captions_train2017.json', transform=None, mode='one'):
         """
         Args:
             root: root directory.
             json: coco annotation file path.
             transform: transformer for image.
         /home/seito/hdd/dsets/coco/train2017 """
-        # when using `restval`, two json files are needed
         self.coco = COCO(os.path.join(root, jsonfile))
         self.img_dir = os.path.join(root, imgdir)
-        # if ids provided by get_paths, use split-specific ids
-        if ids is None:
-            self.ids = list(self.coco.anns.keys())
-        else:
-            self.ids = ids
 
-        # if `restval` data is to be used, record the break point for ids
-        if isinstance(self.ids, tuple):
-            self.bp = len(self.ids[0])
-            self.ids = list(self.ids[0]) + list(self.ids[1])
-        else:
-            self.bp = len(self.ids)
+        self.imgids = self.coco.getImgIds()
+        self.annids = [self.coco.getAnnIds(id) for id in self.imgids]
         self.transform = transform
+        self.mode = mode
 
     def __getitem__(self, index):
-        """This function returns a tuple that is further passed to collate_fn
-        """
-        caption, img_id, path, image = self.get_raw_item(index)
+
+        img_id = self.imgids[index]
+        ann_id = self.annids[index]
+        path = self.coco.loadImgs(img_id)[0]['file_name']
+        image = Image.open(os.path.join(self.img_dir, path)).convert('RGB')
+        caption = [obj['caption'] for obj in self.coco.loadAnns(ann_id)]
+
+        if self.mode == 'one':
+            capid = np.random.randint(0, len(caption))
+            caption = caption[capid]
+        elif self.mode == 'all':
+            pass
 
         if self.transform is not None:
             image = self.transform(image)
@@ -53,18 +54,8 @@ class CocoDataset(Dataset):
         # Convert caption (string) to word ids.
         return {"image": image, "caption": caption, "index": index, "id": img_id}
 
-    def get_raw_item(self, index):
-        ann_id = self.ids[index]
-        caption = self.coco.anns[ann_id]['caption']
-        img_id = self.coco.anns[ann_id]['image_id']
-        path = self.coco.loadImgs(img_id)[0]['file_name']
-        image = Image.open(os.path.join(self.img_dir, path)).convert('RGB')
-
-        return caption, img_id, path, image
-
     def __len__(self):
-        return len(self.ids)
-
+        return len(self.imgids)
 
 class FlickrDataset(Dataset):
     """
@@ -123,14 +114,17 @@ class EmbedDataset(Dataset):
         for data in loader:
             im = data["image"]
             caption = data["caption"]
-            caption = vocab.return_idx(caption)
+            cap = []
+            for item in caption:
+                cap.extend(vocab.return_idx(item))
+            cap = torch.stack(cap)
             id = data["id"]
-            lengths = caption.ne(vocab.padidx).sum(dim=1)
+            lengths = cap.ne(vocab.padidx).sum(dim=1)
             im = im.to(device)
-            caption = caption.to(device)
+            cap = cap.to(device)
             with torch.no_grad():
                 emb_im = image_model(im)
-                emb_cap = caption_model(caption, lengths)
+                emb_cap = caption_model(cap, lengths)
             self.embedded["image"].append(emb_im.cpu().numpy())
             self.embedded["caption"].append(emb_cap.cpu().numpy())
             self.embedded["id"].extend(id)
@@ -138,7 +132,7 @@ class EmbedDataset(Dataset):
         self.embedded["caption"] = np.concatenate(self.embedded["caption"])
 
     def __len__(self):
-        return self.embedded["caption"].shape[0]
+        return len(self.embedded["id"])
 
 if __name__ == '__main__':
     transform = transforms.Compose([

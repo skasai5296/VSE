@@ -54,17 +54,23 @@ def validate(epoch, loader, imenc, capenc, vocab, args):
     print("val dataset created | {} ".format(sec2str(time.time()-begin)), flush=True)
     im = dset.embedded["image"]
     cap = dset.embedded["caption"]
-    nd = len(dset)
-    nq = len(dset)
+    nd = im.shape[0]
+    nq = cap.shape[0]
     d = im.shape[1]
     cpu_index = faiss.IndexFlatIP(d)
 
-    print("# instances: {}, dimension: {}".format(nd, d), flush=True)
+    print("# images: {}, # captions: {}, dimension: {}".format(nd, nq, d), flush=True)
     # im2cap
     cpu_index.add(cap)
-    D, I = cpu_index.search(im, nd)
+    D, I = cpu_index.search(im, nq)
     data = {}
-    allrank = np.where(I == np.arange(nq).reshape(-1, 1))[1]
+    allrank = []
+    for i in range(5):
+        gt = np.arange(nd).reshape(-1, 1) * 5 + i
+        rank = np.where(I == gt)[1]
+        allrank.append(rank)
+    allrank = np.stack(allrank)
+    allrank = np.amin(allrank, 0)
     for rank in [1, 5, 10, 20]:
         data["i2c_recall@{}".format(rank)] = 100 * np.sum(allrank < rank) / nq
     data["i2c_median@r"] = np.median(allrank) + 1
@@ -73,7 +79,8 @@ def validate(epoch, loader, imenc, capenc, vocab, args):
     cpu_index.reset()
     cpu_index.add(im)
     D, I = cpu_index.search(cap, nd)
-    allrank = np.where(I == np.arange(nq).reshape(-1, 1))[1]
+    gt = np.arange(nq).reshape(-1, 1) // 5
+    allrank = np.where(I == gt)[1]
     for rank in [1, 5, 10, 20]:
         data["c2i_recall@{}".format(rank)] = 100 * np.sum(allrank < rank) / nq
     data["c2i_median@r"] = np.median(allrank) + 1
@@ -96,9 +103,9 @@ def main():
         ])
     if args.dataset == 'coco':
         train_dset = CocoDataset(root=args.root_path, transform=transform)
-        val_dset = CocoDataset(root=args.root_path, imgdir='val2017', jsonfile='annotations/captions_val2017.json', transform=transform)
+        val_dset = CocoDataset(root=args.root_path, imgdir='val2017', jsonfile='annotations/captions_val2017.json', transform=transform, mode='all')
     train_loader = DataLoader(train_dset, batch_size=args.batch_size, shuffle=True, num_workers=args.n_cpu)
-    val_loader = DataLoader(val_dset, batch_size=args.batch_size, shuffle=True, num_workers=args.n_cpu)
+    val_loader = DataLoader(val_dset, batch_size=args.batch_size, shuffle=False, num_workers=args.n_cpu)
 
     vocab = Vocabulary(max_len=args.max_len)
     vocab.load_vocab(args.vocab_path)
