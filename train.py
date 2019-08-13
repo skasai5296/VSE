@@ -12,7 +12,7 @@ import torchvision.transforms as transforms
 import faiss
 
 from dataset import CocoDataset, EmbedDataset
-from utils import sec2str, PairwiseRankingLoss
+from utils import sec2str, PairwiseRankingLoss, collater_eval, collater_train
 from model import ImageEncoder, CaptionEncoder
 from vocab import Vocabulary
 
@@ -26,8 +26,7 @@ def train(epoch, loader, imenc, capenc, optimizer, lossfunc, vocab, args):
         """image, target, index, img_id"""
         image = data["image"]
         caption = data["caption"]
-        index = data["index"]
-        id = data["id"]
+        img_id = data["img_id"]
         target = vocab.return_idx(caption)
         lengths = target.ne(vocab.padidx).sum(dim=1)
 
@@ -54,6 +53,11 @@ def validate(epoch, loader, imenc, capenc, vocab, args):
     print("val dataset created | {} ".format(sec2str(time.time()-begin)), flush=True)
     im = dset.embedded["image"]
     cap = dset.embedded["caption"]
+    img_ids = dset.embedded["img_id"]
+    ann_ids = dset.embedded["ann_id"]
+    #print(len(img_ids)) # 5000
+    #print(len(ann_ids)) # 25000
+
     nd = im.shape[0]
     nq = cap.shape[0]
     d = im.shape[1]
@@ -65,12 +69,15 @@ def validate(epoch, loader, imenc, capenc, vocab, args):
     D, I = cpu_index.search(im, nq)
     data = {}
     allrank = []
+
     for i in range(5):
-        gt = np.arange(nd).reshape(-1, 1) * 5 + i
+        gt = (np.arange(nd) * 5).reshape(-1, 1) + i
+        print(gt)
         rank = np.where(I == gt)[1]
         allrank.append(rank)
     allrank = np.stack(allrank)
     allrank = np.amin(allrank, 0)
+    print(allrank)
     for rank in [1, 5, 10, 20]:
         data["i2c_recall@{}".format(rank)] = 100 * np.sum(allrank < rank) / nq
     data["i2c_median@r"] = np.median(allrank) + 1
@@ -80,6 +87,7 @@ def validate(epoch, loader, imenc, capenc, vocab, args):
     cpu_index.add(im)
     D, I = cpu_index.search(cap, nd)
     gt = np.arange(nq).reshape(-1, 1) // 5
+    print(gt)
     allrank = np.where(I == gt)[1]
     for rank in [1, 5, 10, 20]:
         data["c2i_recall@{}".format(rank)] = 100 * np.sum(allrank < rank) / nq
@@ -102,10 +110,10 @@ def main():
                              std=[0.229, 0.224, 0.225])
         ])
     if args.dataset == 'coco':
-        train_dset = CocoDataset(root=args.root_path, transform=transform)
+        train_dset = CocoDataset(root=args.root_path, transform=transform, mode='one')
         val_dset = CocoDataset(root=args.root_path, imgdir='val2017', jsonfile='annotations/captions_val2017.json', transform=transform, mode='all')
-    train_loader = DataLoader(train_dset, batch_size=args.batch_size, shuffle=True, num_workers=args.n_cpu)
-    val_loader = DataLoader(val_dset, batch_size=args.batch_size, shuffle=False, num_workers=args.n_cpu)
+    train_loader = DataLoader(train_dset, batch_size=args.batch_size, shuffle=True, num_workers=args.n_cpu, collate_fn=collater_train)
+    val_loader = DataLoader(val_dset, batch_size=args.batch_size, shuffle=False, num_workers=args.n_cpu, collate_fn=collater_eval)
 
     vocab = Vocabulary(max_len=args.max_len)
     vocab.load_vocab(args.vocab_path)
@@ -140,7 +148,7 @@ def main():
 
     assert offset < args.max_epochs
     for ep in range(offset, args.max_epochs):
-        imenc, capenc, optimizer = train(ep+1, train_loader, imenc, capenc, optimizer, lossfunc, vocab, args)
+        #imenc, capenc, optimizer = train(ep+1, train_loader, imenc, capenc, optimizer, lossfunc, vocab, args)
         data = validate(ep+1, val_loader, imenc, capenc, vocab, args)
         totalscore = 0
         for rank in [1, 5, 10, 20]:
@@ -179,24 +187,24 @@ def parse_args():
     parser.add_argument('--rnn_type', type=str, default="LSTM")
 
     # training config
-    parser.add_argument('--n_cpu', type=int, default=4)
-    parser.add_argument('--margin', type=float, default=0.2)
-    parser.add_argument('--emb_size', type=int, default=256, help="embedding size of vocabulary")
-    parser.add_argument('--out_size', type=int, default=256, help="embedding size for output vectors")
+    parser.add_argument('--n_cpu', type=int, default=8)
+    parser.add_argument('--margin', type=float, default=0.05)
+    parser.add_argument('--emb_size', type=int, default=512, help="embedding size of vocabulary")
+    parser.add_argument('--out_size', type=int, default=512, help="embedding size for output vectors")
     parser.add_argument('--max_epochs', type=int, default=50)
     parser.add_argument('--max_len', type=int, default=30)
     parser.add_argument('--log_every', type=int, default=10, help="log every x iterations")
-    parser.add_argument('--no_cuda', action='store_true', help="log every x iterations")
+    parser.add_argument('--no_cuda', action='store_true', help="disable cuda")
 
     # hyperparams
-    parser.add_argument('--imsize', type=int, default=224)
-    parser.add_argument('--batch_size', type=int, default=512)
-    parser.add_argument('--lr_cnn', type=float, default=1e-3)
-    parser.add_argument('--mom_cnn', type=float, default=0.9)
-    parser.add_argument('--lr_rnn', type=float, default=1e-3)
-    parser.add_argument('--mom_rnn', type=float, default=0.9)
-    parser.add_argument('--weight_decay', type=float, default=1e-4)
-    parser.add_argument('--patience', type=int, default=5)
+    parser.add_argument('--imsize', type=int, default=224, help="image size to train on.")
+    parser.add_argument('--batch_size', type=int, default=128, help="batch size. must be a large number for negatives")
+    parser.add_argument('--lr_cnn', type=float, default=1e-3, help="learning rate of cnn")
+    parser.add_argument('--mom_cnn', type=float, default=0.9, help="momentum of cnn")
+    parser.add_argument('--lr_rnn', type=float, default=1e-3, help="learning rate of rnn")
+    parser.add_argument('--mom_rnn', type=float, default=0.9, help="momentum of rnn")
+    parser.add_argument('--weight_decay', type=float, default=1e-4, help="weight decay of all parameters")
+    parser.add_argument('--patience', type=int, default=5, help="patience of learning rate scheduler")
 
     args = parser.parse_args()
 

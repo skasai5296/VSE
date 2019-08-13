@@ -45,6 +45,7 @@ class CocoDataset(Dataset):
         if self.mode == 'one':
             capid = np.random.randint(0, len(caption))
             caption = caption[capid]
+            ann_id = ann_id[capid]
         elif self.mode == 'all':
             pass
 
@@ -52,7 +53,7 @@ class CocoDataset(Dataset):
             image = self.transform(image)
 
         # Convert caption (string) to word ids.
-        return {"image": image, "caption": caption, "index": index, "id": img_id}
+        return {"image": image, "caption": caption, "index": index, "img_id": img_id, "ann_id": ann_id}
 
     def __len__(self):
         return len(self.imgids)
@@ -110,15 +111,11 @@ class EmbedDataset(Dataset):
             model: trained model to evaluate
         """
         device = torch.device("cuda" if torch.cuda.is_available() and not args.no_cuda else "cpu")
-        self.embedded = {"image": [], "caption": [], "id": []}
+        self.embedded = {"image": [], "caption": [], "img_id": [], "ann_id": []}
         for data in loader:
             im = data["image"]
             caption = data["caption"]
-            cap = []
-            for item in caption:
-                cap.extend(vocab.return_idx(item))
-            cap = torch.stack(cap)
-            id = data["id"]
+            cap = vocab.return_idx(caption)
             lengths = cap.ne(vocab.padidx).sum(dim=1)
             im = im.to(device)
             cap = cap.to(device)
@@ -127,12 +124,14 @@ class EmbedDataset(Dataset):
                 emb_cap = caption_model(cap, lengths)
             self.embedded["image"].append(emb_im.cpu().numpy())
             self.embedded["caption"].append(emb_cap.cpu().numpy())
-            self.embedded["id"].extend(id)
-        self.embedded["image"] = np.concatenate(self.embedded["image"])
-        self.embedded["caption"] = np.concatenate(self.embedded["caption"])
+            self.embedded["img_id"].extend(data["img_id"])
+            self.embedded["ann_id"].extend(data["ann_id"])
+        self.embedded["image"] = np.concatenate(self.embedded["image"], axis=0)
+        self.embedded["caption"] = np.concatenate(self.embedded["caption"], axis=0)
+
 
     def __len__(self):
-        return len(self.embedded["id"])
+        return len(self.embedded["img_id"])
 
 if __name__ == '__main__':
     transform = transforms.Compose([
@@ -141,6 +140,6 @@ if __name__ == '__main__':
         transforms.Normalize(mean=[0.485, 0.456, 0.406],
                              std=[0.229, 0.224, 0.225])
         ])
-    cocodset = CocoDataset(root="/home/seito/hdd/dsets/coco", transform=transform)
+    cocodset = CocoDataset(root="/ssd1/dsets/coco", transform=transform)
     print(cocodset[1])
 

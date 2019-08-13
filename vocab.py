@@ -31,7 +31,7 @@ class Vocabulary():
         self.len = len(self.text_proc.vocab)
         self.padidx = self.text_proc.vocab.stoi["<pad>"]
         print("done building vocabulary, minimum frequency is {} times".format(self.min_freq), flush=True)
-        print("{} | # of words in vocab: {}".format(sec2str(time.time() - before), self.len), flush=True)
+        print("# of words in vocab: {} | {}".format(self.len, sec2str(time.time()-before)), flush=True)
 
     # sentence_batch: list of str
     # return indexes of sentence batch as torch.LongTensor

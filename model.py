@@ -12,7 +12,6 @@ import torchvision
 
 from utils import sec2str, weight_init
 
-
 # L2 normalize a batched tensor (bs, ft)
 def l2normalize(ten):
     norm = torch.norm(ten, dim=1, keepdim=True)
