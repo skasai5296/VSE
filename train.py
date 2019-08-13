@@ -72,12 +72,10 @@ def validate(epoch, loader, imenc, capenc, vocab, args):
 
     for i in range(5):
         gt = (np.arange(nd) * 5).reshape(-1, 1) + i
-        print(gt)
         rank = np.where(I == gt)[1]
         allrank.append(rank)
     allrank = np.stack(allrank)
     allrank = np.amin(allrank, 0)
-    print(allrank)
     for rank in [1, 5, 10, 20]:
         data["i2c_recall@{}".format(rank)] = 100 * np.sum(allrank < rank) / nq
     data["i2c_median@r"] = np.median(allrank) + 1
@@ -87,7 +85,6 @@ def validate(epoch, loader, imenc, capenc, vocab, args):
     cpu_index.add(im)
     D, I = cpu_index.search(cap, nd)
     gt = np.arange(nq).reshape(-1, 1) // 5
-    print(gt)
     allrank = np.where(I == gt)[1]
     for rank in [1, 5, 10, 20]:
         data["c2i_recall@{}".format(rank)] = 100 * np.sum(allrank < rank) / nq
