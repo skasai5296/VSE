@@ -145,7 +145,7 @@ def main():
 
     assert offset < args.max_epochs
     for ep in range(offset, args.max_epochs):
-        #imenc, capenc, optimizer = train(ep+1, train_loader, imenc, capenc, optimizer, lossfunc, vocab, args)
+        imenc, capenc, optimizer = train(ep+1, train_loader, imenc, capenc, optimizer, lossfunc, vocab, args)
         data = validate(ep+1, val_loader, imenc, capenc, vocab, args)
         totalscore = 0
         for rank in [1, 5, 10, 20]:
