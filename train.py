@@ -180,7 +180,8 @@ def main():
     visualize(metrics, args)
 
 def visualize(metrics, args):
-    fig, ax = plt.subplots()
+    fig = plt.figure(clear=True)
+    ax = fig.add_axes([0.1, 0.1, 0.6, 0.75])
     ax.set_title("Recall for lr={}, margin={}, bs={}".format(args.lr_cnn, args.margin, args.batch_size))
     ax.set_xlabel("Epochs")
     ax.set_ylabel("Recall")
@@ -192,7 +193,8 @@ def visualize(metrics, args):
     ax.legend(bbox_to_anchor=(1.05, 1), loc='upper left', borderaxespad=0)
     plt.savefig(os.path.join(args.fig_save_path, "recall.png"))
 
-    fig, ax = plt.subplots(clear=True)
+    fig = plt.figure(clear=True)
+    ax = fig.add_axes([0.1, 0.1, 0.6, 0.75])
     ax.set_title("Median ranking for lr={}, margin={}, bs={}".format(args.lr_cnn, args.margin, args.batch_size))
     ax.set_xlabel("Epochs")
     ax.set_ylabel("Median")
