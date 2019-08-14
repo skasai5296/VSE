@@ -3,12 +3,15 @@ import torch.nn as nn
 import torch.nn.init as init
 
 class PairwiseRankingLoss(nn.Module):
-    def __init__(self, margin=0.2):
+    def __init__(self, margin=0.2, method='max', improved=False, intra=0.05):
         super(PairwiseRankingLoss, self).__init__()
         self.margin = margin
+        self.method = method
+        self.improved = improved
+        self.intra = intra
 
     # im, sen : (n_samples, dim)
-    def forward(self, im, sen, method='max'):
+    def forward(self, im, sen):
         n_samples = im.size(0)
         # sim_mat : (n_samples, n_samples)
         sim_mat = im.mm(sen.t())
@@ -26,16 +29,21 @@ class PairwiseRankingLoss(nn.Module):
         # image negatives
         lossmat_c = (self.margin + sim_mat - positive2).clamp(min=0).masked_fill(mask, 0)
         # max of hinges loss
-        if method == "max":
+        if self.method == "max":
             # lossmat : (n_samples)
             lossmat_i = lossmat_i.max(dim=1)[0]
             lossmat_c = lossmat_c.max(dim=0)[0]
         # sum of hinges loss
-        elif method == "sum":
+        elif self.method == "sum":
             pass
 
         loss = (lossmat_i.sum() + lossmat_c.sum()) / n_samples
+
+        if self.improved:
+            loss += (sim_mat.diag() - self.intra).clamp(min=0).sum()
+
         return loss
+
 
 # collating function for training, assumes one caption per image
 def collater_train(data):

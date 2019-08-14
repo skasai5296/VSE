@@ -3,6 +3,7 @@ import argparse
 import time
 
 import numpy as np
+import matplotlib.pyplot as plt
 import torch
 import torch.nn as nn
 import torch.optim as optim
@@ -77,7 +78,7 @@ def validate(epoch, loader, imenc, capenc, vocab, args):
     allrank = np.stack(allrank)
     allrank = np.amin(allrank, 0)
     for rank in [1, 5, 10, 20]:
-        data["i2c_recall@{}".format(rank)] = 100 * np.sum(allrank < rank) / nq
+        data["i2c_recall@{}".format(rank)] = 100 * np.sum(allrank < rank) / len(allrank)
     data["i2c_median@r"] = np.median(allrank) + 1
 
     # cap2im
@@ -87,7 +88,7 @@ def validate(epoch, loader, imenc, capenc, vocab, args):
     gt = np.arange(nq).reshape(-1, 1) // 5
     allrank = np.where(I == gt)[1]
     for rank in [1, 5, 10, 20]:
-        data["c2i_recall@{}".format(rank)] = 100 * np.sum(allrank < rank) / nq
+        data["c2i_recall@{}".format(rank)] = 100 * np.sum(allrank < rank) / len(allrank)
     data["c2i_median@r"] = np.median(allrank) + 1
 
     print("-"*50)
@@ -128,7 +129,7 @@ def main():
         {'params' : capenc.parameters(), 'lr' : args.lr_rnn, 'momentum' : args.mom_rnn}
         ])
     scheduler = optim.lr_scheduler.ReduceLROnPlateau(optimizer, mode='max', factor=0.1, patience=args.patience, verbose=True)
-    lossfunc = PairwiseRankingLoss(margin=args.margin)
+    lossfunc = PairwiseRankingLoss(margin=args.margin, method=args.method, improved=args.improved, intra=args.intra)
 
     if args.checkpoint is not None:
         print("loading model and optimizer checkpoint from {} ...".format(args.checkpoint), flush=True)
@@ -142,6 +143,8 @@ def main():
         offset = 0
     imenc = nn.DataParallel(imenc)
     capenc = nn.DataParallel(capenc)
+
+    metrics = {}
 
     assert offset < args.max_epochs
     for ep in range(offset, args.max_epochs):
@@ -168,6 +171,39 @@ def main():
         torch.save(ckpt, savepath)
         print("done for epoch {}".format(ep+1), flush=True)
 
+        for k, v in data.items():
+            if k not in metrics.keys():
+                metrics[k] = [v]
+            else:
+                metrics[k].append(v)
+
+    visualize(metrics, args)
+
+def visualize(metrics, args):
+    fig, ax = plt.subplots()
+    ax.set_title("Recall for lr={}, margin={}, bs={}".format(args.lr_cnn, args.margin, args.batch_size))
+    ax.set_xlabel("Epochs")
+    ax.set_ylabel("Recall")
+    for k, v in metrics.items():
+        if "median" in k:
+            continue
+        ax.plot(v, label=k)
+
+    ax.legend(bbox_to_anchor=(1.05, 1), loc='upper left', borderaxespad=0)
+    plt.savefig(os.path.join(args.fig_save_path, "recall.png"))
+
+    fig, ax = plt.subplots(clear=True)
+    ax.set_title("Median ranking for lr={}, margin={}, bs={}".format(args.lr_cnn, args.margin, args.batch_size))
+    ax.set_xlabel("Epochs")
+    ax.set_ylabel("Median")
+    for k, v in metrics.items():
+        if "recall" in k:
+            continue
+        ax.plot(v, label=k)
+
+    ax.legend(bbox_to_anchor=(1.05, 1), loc='upper left', borderaxespad=0)
+    plt.savefig(os.path.join(args.fig_save_path, "median.png"))
+
 
 def parse_args():
     parser = argparse.ArgumentParser()
@@ -178,27 +214,31 @@ def parse_args():
     parser.add_argument('--vocab_path', type=str, default='captions_train2017.txt')
     parser.add_argument('--checkpoint', type=str, default=None, help='Path to checkpoint if any, will restart training from there')
     parser.add_argument('--model_save_path', type=str, default='models/', help='Path to save models to when training')
+    parser.add_argument('--fig_save_path', type=str, default='out/', help='Path to save figures')
 
     # configurations of models
-    parser.add_argument('--cnn_type', type=str, default="resnet18")
-    parser.add_argument('--rnn_type', type=str, default="LSTM")
+    parser.add_argument('--cnn_type', type=str, default="resnet18", help="architecture of cnn")
+    parser.add_argument('--rnn_type', type=str, default="LSTM", help="architecture of rnn")
 
     # training config
-    parser.add_argument('--n_cpu', type=int, default=8)
-    parser.add_argument('--margin', type=float, default=0.05)
+    parser.add_argument('--n_cpu', type=int, default=8, help="number of threads for dataloading")
+    parser.add_argument('--method', type=str, default="max", help="hardest negative (max) or all negatives (sum)")
+    parser.add_argument('--margin', type=float, default=0.2, help="margin for pairwise ranking loss")
+    parser.add_argument('--improved', action='store_true', help="improved triplet loss")
+    parser.add_argument('--intra', type=float, default=0.05, help="beta for improved triplet loss")
     parser.add_argument('--emb_size', type=int, default=512, help="embedding size of vocabulary")
     parser.add_argument('--out_size', type=int, default=512, help="embedding size for output vectors")
-    parser.add_argument('--max_epochs', type=int, default=50)
-    parser.add_argument('--max_len', type=int, default=30)
+    parser.add_argument('--max_epochs', type=int, default=30, help="max number of epochs to train for")
+    parser.add_argument('--max_len', type=int, default=30, help="max length of sentences")
     parser.add_argument('--log_every', type=int, default=10, help="log every x iterations")
     parser.add_argument('--no_cuda', action='store_true', help="disable cuda")
 
     # hyperparams
     parser.add_argument('--imsize', type=int, default=224, help="image size to train on.")
     parser.add_argument('--batch_size', type=int, default=128, help="batch size. must be a large number for negatives")
-    parser.add_argument('--lr_cnn', type=float, default=1e-3, help="learning rate of cnn")
+    parser.add_argument('--lr_cnn', type=float, default=1e-2, help="learning rate of cnn")
     parser.add_argument('--mom_cnn', type=float, default=0.9, help="momentum of cnn")
-    parser.add_argument('--lr_rnn', type=float, default=1e-3, help="learning rate of rnn")
+    parser.add_argument('--lr_rnn', type=float, default=1e-2, help="learning rate of rnn")
     parser.add_argument('--mom_rnn', type=float, default=0.9, help="momentum of rnn")
     parser.add_argument('--weight_decay', type=float, default=1e-4, help="weight decay of all parameters")
     parser.add_argument('--patience', type=int, default=5, help="patience of learning rate scheduler")
