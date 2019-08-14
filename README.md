@@ -1,11 +1,9 @@
-# VSE
-Visual Semantic Embedding
----
+# VSE: Visual Semantic Embedding in PyTorch
 
 ## Description
 This repository contains the implementation of visual-semantic embedding.  
-Training and Evaluation is done on the COCO dataset.  
-Code is still in progress.  
+Training and evaluation is done on the MSCOCO dataset.  
+
 
 ## Requirements (libraries)
 ```
@@ -43,6 +41,13 @@ $ python train.py --root_path $ROOTPATH
 ```bash
 $ python eval.py --root_path $ROOTPATH --checkpoint hogehoge.ckpt --image_path $IMAGE --caption $CAPTION
 ```
-`--image_path` denotes the path to reference image. Defaults to `samples/sample1.jpg`.  
-`--caption` denotes the reference caption. Defaults to `"the cat is walking on the street"`  
+`$IMAGE` denotes the path to reference image. Defaults to `samples/sample1.jpg`.  
+`$CAPTION` denotes the reference caption. Defaults to `"the cat is walking on the street"`  
+Retrieval is done on MSCOCO validation set.
 
+
+## TODO
+- [ ] add Flickr8k
+- [ ] add Flickr30k
+- [ ] clean up validation
+- [ ] find optimal hyperparams
