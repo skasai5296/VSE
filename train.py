@@ -164,7 +164,7 @@ def main():
                 "optimizer_state": optimizer.state_dict(),
                 "scheduler_state": scheduler.state_dict()
                 }
-        savedir = "models" + args.config_name
+        savedir = os.path.join("models", args.config_name)
         if not os.path.exists(savedir):
             os.makedirs(savedir)
         savepath = os.path.join(savedir, "epoch_{:04d}_score_{:05d}.ckpt".format(ep+1, int(100*totalscore)))
