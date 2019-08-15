@@ -118,6 +118,8 @@ def main():
 
     imenc = ImageEncoder(args.out_size, args.cnn_type)
     capenc = CaptionEncoder(len(vocab), args.emb_size, args.out_size, args.rnn_type)
+    imenc.apply(weight_init)
+    capenc.apply(weight_init)
 
     device = torch.device("cuda" if torch.cuda.is_available() and not args.no_cuda else "cpu")
 
