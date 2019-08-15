@@ -128,7 +128,7 @@ def main():
         {'params' : imenc.parameters(), 'lr' : args.lr_cnn, 'momentum' : args.mom_cnn},
         {'params' : capenc.parameters(), 'lr' : args.lr_rnn, 'momentum' : args.mom_rnn}
         ])
-    scheduler = optim.lr_scheduler.ReduceLROnPlateau(optimizer, mode='max', factor=0.1, patience=args.patience, verbose=True)
+    scheduler = optim.lr_scheduler.ReduceLROnPlateau(optimizer, mode='max', factor=args.dampen_factor, patience=args.patience, verbose=True)
     lossfunc = PairwiseRankingLoss(margin=args.margin, method=args.method, improved=args.improved, intra=args.intra)
 
     if args.checkpoint is not None:
@@ -164,9 +164,10 @@ def main():
                 "optimizer_state": optimizer.state_dict(),
                 "scheduler_state": scheduler.state_dict()
                 }
-        if not os.path.exists(args.model_save_path):
-            os.makedirs(args.model_save_path)
-        savepath = os.path.join(args.model_save_path, "epoch_{:04d}_score_{:05d}.ckpt".format(ep+1, int(100*totalscore)))
+        savedir = "models" + args.config_name
+        if not os.path.exists(savedir):
+            os.makedirs(savedir)
+        savepath = os.path.join(savedir, "epoch_{:04d}_score_{:05d}.ckpt".format(ep+1, int(100*totalscore)))
         print("saving model and optimizer checkpoint to {} ...".format(savepath), flush=True)
         torch.save(ckpt, savepath)
         print("done for epoch {}".format(ep+1), flush=True)
@@ -180,6 +181,10 @@ def main():
     visualize(metrics, args)
 
 def visualize(metrics, args):
+    savepath = os.path.join("out", args.config_name)
+    if not os.path.exists(savepath):
+        os.makedirs(savepath)
+
     fig = plt.figure(clear=True)
     ax = fig.add_axes([0.1, 0.1, 0.6, 0.75])
     ax.set_title("Recall for lr={}, margin={}, bs={}".format(args.lr_cnn, args.margin, args.batch_size))
@@ -191,7 +196,7 @@ def visualize(metrics, args):
         ax.plot(v, label=k)
 
     ax.legend(bbox_to_anchor=(1.05, 1), loc='upper left', borderaxespad=0)
-    plt.savefig(os.path.join(args.fig_save_path, "recall.png"))
+    plt.savefig(os.path.join(save_path, "recall.png"))
 
     fig = plt.figure(clear=True)
     ax = fig.add_axes([0.1, 0.1, 0.6, 0.75])
@@ -204,7 +209,7 @@ def visualize(metrics, args):
         ax.plot(v, label=k)
 
     ax.legend(bbox_to_anchor=(1.05, 1), loc='upper left', borderaxespad=0)
-    plt.savefig(os.path.join(args.fig_save_path, "median.png"))
+    plt.savefig(os.path.join(save_path, "median.png"))
 
 
 def parse_args():
@@ -215,8 +220,7 @@ def parse_args():
     parser.add_argument('--root_path', type=str, default='/home/seito/hdd/dsets/coco')
     parser.add_argument('--vocab_path', type=str, default='captions_train2017.txt')
     parser.add_argument('--checkpoint', type=str, default=None, help='Path to checkpoint if any, will restart training from there')
-    parser.add_argument('--model_save_path', type=str, default='models/', help='Path to save models to when training')
-    parser.add_argument('--fig_save_path', type=str, default='out/', help='Path to save figures')
+    parser.add_argument('--config_name', type=str, default='default/', help='Path to save checkpoints and figures to when training')
 
     # configurations of models
     parser.add_argument('--cnn_type', type=str, default="resnet18", help="architecture of cnn")
@@ -243,7 +247,8 @@ def parse_args():
     parser.add_argument('--lr_rnn', type=float, default=1e-2, help="learning rate of rnn")
     parser.add_argument('--mom_rnn', type=float, default=0.9, help="momentum of rnn")
     parser.add_argument('--weight_decay', type=float, default=1e-4, help="weight decay of all parameters")
-    parser.add_argument('--patience', type=int, default=5, help="patience of learning rate scheduler")
+    parser.add_argument('--patience', type=int, default=10, help="patience of learning rate scheduler")
+    parser.add_argument('--dampen_factor', type=int, default=0.5, help="dampening factor for learning rate scheduler")
 
     args = parser.parse_args()
 
