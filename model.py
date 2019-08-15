@@ -41,9 +41,10 @@ class ImageEncoder(nn.Module):
         return normed_out
 
 class CaptionEncoder(nn.Module):
-    def __init__(self, vocab_size, emb_size=256, out_size=256, rnn_type="LSTM", pad_idx=0):
+    def __init__(self, vocab_size, emb_size=256, out_size=256, rnn_type="LSTM", padidx=0):
         super(CaptionEncoder, self).__init__()
-        self.pad_idx = pad_idx
+        self.padidx = padidx
+        self.emb_size = emb_size
         self.emb = nn.Embedding(vocab_size, emb_size)
         self.rnn = getattr(nn, rnn_type)(emb_size, out_size, batch_first=True)
 
@@ -56,9 +57,12 @@ class CaptionEncoder(nn.Module):
         emb = self.emb(x)
         # packed: PackedSequence of (bs, seq, emb_size)
         packed = pack_padded_sequence(emb, lengths, batch_first=True, enforce_sorted=False)
-        _, (hn, _) = self.rnn(packed)
+        output, _ = self.rnn(packed)
         # hn: (bs, seq, emb_size)
-        normed_out = l2normalize(hn[0])
+        output = pad_packed_sequence(output, batch_first=True, padding_value=self.padidx)[0]
+        lengths = lengths.view(-1, 1, 1).expand(-1, -1, self.emb_size) - 1
+        out = torch.gather(output, 1, lengths).squeeze(1)
+        normed_out = l2normalize(out)
         return normed_out
 
 if __name__ == '__main__':
@@ -66,14 +70,11 @@ if __name__ == '__main__':
 
     cnn = ImageEncoder()
     out = cnn(ten)
-    print(out)
     print(out.size())
-
 
     cap = CaptionEncoder(vocab_size=100)
     seq = torch.randint(100, (16, 30), dtype=torch.long)
     len = torch.randint(1, 31, (16,), dtype=torch.long)
     out = cap(seq, len)
-    print(out)
     print(out.size())
 

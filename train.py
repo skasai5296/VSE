@@ -117,9 +117,7 @@ def main():
     vocab.load_vocab(args.vocab_path)
 
     imenc = ImageEncoder(args.out_size, args.cnn_type)
-    capenc = CaptionEncoder(len(vocab), args.emb_size, args.out_size, args.rnn_type)
-    imenc.apply(weight_init)
-    capenc.apply(weight_init)
+    capenc = CaptionEncoder(len(vocab), args.emb_size, args.out_size, args.rnn_type, vocab.padidx)
 
     device = torch.device("cuda" if torch.cuda.is_available() and not args.no_cuda else "cpu")
 
@@ -250,7 +248,7 @@ def parse_args():
     parser.add_argument('--mom_rnn', type=float, default=0.9, help="momentum of rnn")
     parser.add_argument('--weight_decay', type=float, default=1e-4, help="weight decay of all parameters")
     parser.add_argument('--patience', type=int, default=10, help="patience of learning rate scheduler")
-    parser.add_argument('--dampen_factor', type=int, default=0.5, help="dampening factor for learning rate scheduler")
+    parser.add_argument('--dampen_factor', type=float, default=0.5, help="dampening factor for learning rate scheduler")
 
     args = parser.parse_args()
 
