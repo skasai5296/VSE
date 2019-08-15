@@ -227,7 +227,7 @@ def parse_args():
     parser.add_argument('--method', type=str, default="max", help="hardest negative (max) or all negatives (sum)")
     parser.add_argument('--margin', type=float, default=0.2, help="margin for pairwise ranking loss")
     parser.add_argument('--improved', action='store_true', help="improved triplet loss")
-    parser.add_argument('--intra', type=float, default=0.05, help="beta for improved triplet loss")
+    parser.add_argument('--intra', type=float, default=0.5, help="beta for improved triplet loss")
     parser.add_argument('--emb_size', type=int, default=512, help="embedding size of vocabulary")
     parser.add_argument('--out_size', type=int, default=512, help="embedding size for output vectors")
     parser.add_argument('--max_epochs', type=int, default=30, help="max number of epochs to train for")
