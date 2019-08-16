@@ -175,7 +175,7 @@ def main():
             bestscore = totalscore
             torch.save(ckpt, savepath)
         else:
-            print("no improvement from previous score of {}, not saving".format(savepath), flush=True)
+            print("score: {}, no improvement from previous score of {}, not saving".format(totalscore, bestscore), flush=True)
         print("done for epoch {}".format(ep+1), flush=True)
 
         for k, v in data.items():
