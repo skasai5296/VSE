@@ -202,7 +202,7 @@ def visualize(metrics, args):
         ax.plot(v, label=k)
 
     ax.legend(bbox_to_anchor=(1.05, 1), loc='upper left', borderaxespad=0)
-    plt.savefig(os.path.join(save_path, "recall.png"))
+    plt.savefig(os.path.join(savepath, "recall.png"))
 
     fig = plt.figure(clear=True)
     ax = fig.add_axes([0.1, 0.1, 0.6, 0.75])
@@ -215,7 +215,7 @@ def visualize(metrics, args):
         ax.plot(v, label=k)
 
     ax.legend(bbox_to_anchor=(1.05, 1), loc='upper left', borderaxespad=0)
-    plt.savefig(os.path.join(save_path, "median.png"))
+    plt.savefig(os.path.join(savepath, "median.png"))
 
 
 def parse_args():
