@@ -145,6 +145,7 @@ def main():
     capenc = nn.DataParallel(capenc)
 
     metrics = {}
+    bestscore = -1
 
     assert offset < args.max_epochs
     for ep in range(offset, args.max_epochs):
@@ -167,9 +168,14 @@ def main():
         savedir = os.path.join("models", args.config_name)
         if not os.path.exists(savedir):
             os.makedirs(savedir)
+
         savepath = os.path.join(savedir, "epoch_{:04d}_score_{:05d}.ckpt".format(ep+1, int(100*totalscore)))
-        print("saving model and optimizer checkpoint to {} ...".format(savepath), flush=True)
-        torch.save(ckpt, savepath)
+        if totalscore > bestscore:
+            print("saving model and optimizer checkpoint to {} ...".format(savepath), flush=True)
+            bestscore = totalscore
+            torch.save(ckpt, savepath)
+        else:
+            print("no improvement from previous score of {}, not saving".format(savepath), flush=True)
         print("done for epoch {}".format(ep+1), flush=True)
 
         for k, v in data.items():
