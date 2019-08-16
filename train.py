@@ -13,7 +13,7 @@ import torchvision.transforms as transforms
 import faiss
 
 from dataset import CocoDataset, EmbedDataset
-from utils import sec2str, PairwiseRankingLoss, collater_eval, collater_train
+from utils import sec2str, PairwiseRankingLoss, collater
 from model import ImageEncoder, CaptionEncoder
 from vocab import Vocabulary
 
@@ -45,7 +45,6 @@ def train(epoch, loader, imenc, capenc, optimizer, lossfunc, vocab, args):
         if it % args.log_every == args.log_every-1:
             print("epoch {} | {} | {:06d}/{:06d} iterations | loss: {:.08f}".format(epoch, sec2str(time.time()-begin), it+1, maxit, cumloss/args.log_every), flush=True)
             cumloss = 0
-    return imenc, capenc, optimizer
 
 def validate(epoch, loader, imenc, capenc, vocab, args):
     begin = time.time()
@@ -54,10 +53,15 @@ def validate(epoch, loader, imenc, capenc, vocab, args):
     print("val dataset created | {} ".format(sec2str(time.time()-begin)), flush=True)
     im = dset.embedded["image"]
     cap = dset.embedded["caption"]
-    img_ids = dset.embedded["img_id"]
-    ann_ids = dset.embedded["ann_id"]
-    #print(len(img_ids)) # 5000
-    #print(len(ann_ids)) # 25000
+
+    # img_ids = dset.embedded["img_id"]
+    # ann_ids = dset.embedded["ann_id"]
+    # idx2im_id = img_ids
+    # idx2cap_id = [a for ann in ann_ids for a in ann]
+    # print(idx2im_id)
+    # print(idx2cap_id)
+    # print(len(img_ids)) # 5000
+    # print(len(ann_ids)) # 25000
 
     nd = im.shape[0]
     nq = cap.shape[0]
@@ -71,6 +75,7 @@ def validate(epoch, loader, imenc, capenc, vocab, args):
     data = {}
     allrank = []
 
+    # TODO: Make more efficient, do not hardcode 5
     for i in range(5):
         gt = (np.arange(nd) * 5).reshape(-1, 1) + i
         rank = np.where(I == gt)[1]
@@ -85,6 +90,7 @@ def validate(epoch, loader, imenc, capenc, vocab, args):
     cpu_index.reset()
     cpu_index.add(im)
     D, I = cpu_index.search(cap, nd)
+    # TODO: Make more efficient, do not hardcode 5
     gt = np.arange(nq).reshape(-1, 1) // 5
     allrank = np.where(I == gt)[1]
     for rank in [1, 5, 10, 20]:
@@ -110,8 +116,8 @@ def main():
     if args.dataset == 'coco':
         train_dset = CocoDataset(root=args.root_path, transform=transform, mode='one')
         val_dset = CocoDataset(root=args.root_path, imgdir='val2017', jsonfile='annotations/captions_val2017.json', transform=transform, mode='all')
-    train_loader = DataLoader(train_dset, batch_size=args.batch_size, shuffle=True, num_workers=args.n_cpu, collate_fn=collater_train)
-    val_loader = DataLoader(val_dset, batch_size=args.batch_size, shuffle=False, num_workers=args.n_cpu, collate_fn=collater_eval)
+    train_loader = DataLoader(train_dset, batch_size=args.batch_size, shuffle=True, num_workers=args.n_cpu, collate_fn=collater)
+    val_loader = DataLoader(val_dset, batch_size=args.batch_size, shuffle=False, num_workers=args.n_cpu, collate_fn=collater)
 
     vocab = Vocabulary(max_len=args.max_len)
     vocab.load_vocab(args.vocab_path)
@@ -149,7 +155,7 @@ def main():
 
     assert offset < args.max_epochs
     for ep in range(offset, args.max_epochs):
-        imenc, capenc, optimizer = train(ep+1, train_loader, imenc, capenc, optimizer, lossfunc, vocab, args)
+        #train(ep+1, train_loader, imenc, capenc, optimizer, lossfunc, vocab, args)
         data = validate(ep+1, val_loader, imenc, capenc, vocab, args)
         totalscore = 0
         for rank in [1, 5, 10, 20]:
@@ -171,7 +177,7 @@ def main():
 
         savepath = os.path.join(savedir, "epoch_{:04d}_score_{:05d}.ckpt".format(ep+1, int(100*totalscore)))
         if totalscore > bestscore:
-            print("saving model and optimizer checkpoint to {} ...".format(savepath), flush=True)
+            print("score: {}, saving model and optimizer checkpoint to {} ...".format(totalscore, savepath), flush=True)
             bestscore = totalscore
             torch.save(ckpt, savepath)
         else:
@@ -223,7 +229,7 @@ def parse_args():
 
     # configurations of dataset (paths)
     parser.add_argument('--dataset', type=str, default='coco')
-    parser.add_argument('--root_path', type=str, default='/home/seito/hdd/dsets/coco')
+    parser.add_argument('--root_path', type=str, default='/ssd1/dsets/coco')
     parser.add_argument('--vocab_path', type=str, default='captions_train2017.txt')
     parser.add_argument('--checkpoint', type=str, default=None, help='Path to checkpoint if any, will restart training from there')
     parser.add_argument('--config_name', type=str, default='default/', help='Path to save checkpoints and figures to when training')

@@ -45,25 +45,14 @@ class PairwiseRankingLoss(nn.Module):
         return loss
 
 
-# collating function for training, assumes one caption per image
-def collater_train(data):
+# collating function, restrict to 5 captions/image
+def collater(data):
     out = {"image": [], "caption": [], "img_id": [], "ann_id": []}
     for obj in data:
         out["image"].append(obj["image"])
         out["caption"].append(obj["caption"])
         out["img_id"].append(obj["img_id"])
         out["ann_id"].append(obj["ann_id"])
-    out["image"] = torch.stack(out["image"])
-    return out
-
-# collating function for evaluation, collates captions too
-def collater_eval(data):
-    out = {"image": [], "caption": [], "img_id": [], "ann_id": []}
-    for obj in data:
-        out["image"].append(obj["image"])
-        out["caption"].extend(obj["caption"][:5])
-        out["img_id"].append(obj["img_id"])
-        out["ann_id"].extend(obj["ann_id"][:5])
     out["image"] = torch.stack(out["image"])
     return out
 

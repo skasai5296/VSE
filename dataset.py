@@ -42,12 +42,13 @@ class CocoDataset(Dataset):
         image = Image.open(os.path.join(self.img_dir, path)).convert('RGB')
         caption = [obj['caption'] for obj in self.coco.loadAnns(ann_id)]
 
-        if self.mode == 'one':
+        if self.mode == 'one': # get random caption
             capid = np.random.randint(0, len(caption))
             caption = caption[capid]
             ann_id = ann_id[capid]
-        elif self.mode == 'all':
-            pass
+        elif self.mode == 'all': # restrict to 5 captions
+            caption = caption[:5]
+            ann_id = ann_id[:5]
 
         if self.transform is not None:
             image = self.transform(image)
