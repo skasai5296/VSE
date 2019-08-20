@@ -145,17 +145,21 @@ def main():
         optimizer.load_state_dict(ckpt["optimizer_state"])
         scheduler.load_state_dict(ckpt["scheduler_state"])
         offset = ckpt["epoch"]
+        data = ckpt["stats"]
+        bestscore = 0
+        for rank in [1, 5, 10, 20]:
+            bestscore += int(100 * (data["i2c_recall@{}".format(rank)] + data["c2i_recall@{}".format(rank)]))
     else:
         offset = 0
+        bestscore = -1
     imenc = nn.DataParallel(imenc)
     capenc = nn.DataParallel(capenc)
 
     metrics = {}
-    bestscore = -1
 
     assert offset < args.max_epochs
     for ep in range(offset, args.max_epochs):
-        #train(ep+1, train_loader, imenc, capenc, optimizer, lossfunc, vocab, args)
+        train(ep+1, train_loader, imenc, capenc, optimizer, lossfunc, vocab, args)
         data = validate(ep+1, val_loader, imenc, capenc, vocab, args)
         totalscore = 0
         for rank in [1, 5, 10, 20]:
