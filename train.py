@@ -159,7 +159,7 @@ def main():
         data = validate(ep+1, val_loader, imenc, capenc, vocab, args)
         totalscore = 0
         for rank in [1, 5, 10, 20]:
-            totalscore += data["i2c_recall@{}".format(rank)] + data["c2i_recall@{}".format(rank)]
+            totalscore += int(100 * (data["i2c_recall@{}".format(rank)] + data["c2i_recall@{}".format(rank)]))
         scheduler.step(totalscore)
 
         # save checkpoint
@@ -175,14 +175,14 @@ def main():
         if not os.path.exists(savedir):
             os.makedirs(savedir)
 
-        savepath = os.path.join(savedir, "epoch_{:04d}_score_{:05d}.ckpt".format(ep+1, int(100*totalscore)))
+        savepath = os.path.join(savedir, "epoch_{:04d}_score_{:05d}.ckpt".format(ep+1, totalscore))
         if totalscore > bestscore:
-            print("score: {}, saving model and optimizer checkpoint to {} ...".format(totalscore, savepath), flush=True)
+            print("score: {:05d}, saving model and optimizer checkpoint to {} ...".format(totalscore, savepath), flush=True)
             bestscore = totalscore
             torch.save(ckpt, savepath)
         else:
-            print("score: {}, no improvement from previous score of {}, not saving".format(totalscore, bestscore), flush=True)
-        print("done for epoch {}".format(ep+1), flush=True)
+            print("score: {:05d}, no improvement from best score {:05d}, not saving".format(totalscore, bestscore), flush=True)
+        print("done for epoch {:04d}".format(ep+1), flush=True)
 
         for k, v in data.items():
             if k not in metrics.keys():

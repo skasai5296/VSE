@@ -116,6 +116,7 @@ class EmbedDataset(Dataset):
         for data in loader:
             im = data["image"]
             caption = data["caption"]
+            caption = [c for cap in caption for c in cap]
             cap = vocab.return_idx(caption)
             lengths = cap.ne(vocab.padidx).sum(dim=1)
             im = im.to(device)
