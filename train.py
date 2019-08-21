@@ -254,7 +254,7 @@ def parse_args():
     parser.add_argument('--intra', type=float, default=0.5, help="beta for improved triplet loss")
     parser.add_argument('--emb_size', type=int, default=512, help="embedding size of vocabulary")
     parser.add_argument('--out_size', type=int, default=512, help="embedding size for output vectors")
-    parser.add_argument('--max_epochs', type=int, default=30, help="max number of epochs to train for")
+    parser.add_argument('--max_epochs', type=int, default=100, help="max number of epochs to train for")
     parser.add_argument('--max_len', type=int, default=30, help="max length of sentences")
     parser.add_argument('--log_every', type=int, default=10, help="log every x iterations")
     parser.add_argument('--no_cuda', action='store_true', help="disable cuda")
