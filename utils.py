@@ -37,12 +37,12 @@ class PairwiseRankingLoss(nn.Module):
         elif self.method == "sum":
             pass
 
-        loss = (lossmat_i.sum() + lossmat_c.sum()) / n_samples
+        loss = (lossmat_i.sum() + lossmat_c.sum())
 
         if self.improved:
             loss += (self.intra - sim_mat.diag()).clamp(min=0).sum()
 
-        return loss
+        return loss / n_samples
 
 
 # collating function, restrict to 5 captions/image

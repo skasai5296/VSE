@@ -16,6 +16,7 @@ class Vocabulary():
     def __init__(self, min_freq=5, max_len=30):
         self.min_freq = min_freq
         self.max_len = max_len
+        self.text_proc = torchtext.data.Field(sequential=True, init_token="<bos>", eos_token="<eos>", lower=True, fix_length=self.max_len, tokenize="spacy", batch_first=True)
 
     """
     build vocabulary from textfile.
@@ -23,7 +24,6 @@ class Vocabulary():
     def load_vocab(self, textfile):
         before = time.time()
         print("building vocabulary...", flush=True)
-        self.text_proc = torchtext.data.Field(sequential=True, init_token="<bos>", eos_token="<eos>", lower=True, fix_length=self.max_len, tokenize="spacy", batch_first=True)
         with open(textfile, 'r') as f:
             sentences = f.readlines()
         sent_proc = list(map(self.text_proc.preprocess, sentences))

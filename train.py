@@ -130,10 +130,14 @@ def main():
     imenc = imenc.to(device)
     capenc = capenc.to(device)
 
-    optimizer = optim.SGD([
-        {'params' : imenc.parameters(), 'lr' : args.lr_cnn, 'momentum' : args.mom_cnn},
-        {'params' : capenc.parameters(), 'lr' : args.lr_rnn, 'momentum' : args.mom_rnn}
-        ])
+    cfgs = [{'params' : imenc.parameters(), 'lr' : args.lr_cnn},
+            {'params' : capenc.parameters(), 'lr' : args.lr_rnn}]
+    if args.optimizer == 'SGD':
+        optimizer = optim.SGD(cfgs, momentum=args.momentum)
+    elif args.optimizer == 'Adam':
+        optimizer = optim.Adam(cfgs, betas=(args.beta1, args.beta2))
+    elif args.optimizer == 'RMSprop':
+        optimizer = optim.RMSprop(cfgs, alpha=args.alpha)
     scheduler = optim.lr_scheduler.ReduceLROnPlateau(optimizer, mode='max', factor=args.dampen_factor, patience=args.patience, verbose=True)
     lossfunc = PairwiseRankingLoss(margin=args.margin, method=args.method, improved=args.improved, intra=args.intra)
 
@@ -259,9 +263,12 @@ def parse_args():
     parser.add_argument('--imsize', type=int, default=224, help="image size to train on.")
     parser.add_argument('--batch_size', type=int, default=128, help="batch size. must be a large number for negatives")
     parser.add_argument('--lr_cnn', type=float, default=1e-2, help="learning rate of cnn")
-    parser.add_argument('--mom_cnn', type=float, default=0.9, help="momentum of cnn")
     parser.add_argument('--lr_rnn', type=float, default=1e-2, help="learning rate of rnn")
-    parser.add_argument('--mom_rnn', type=float, default=0.9, help="momentum of rnn")
+    parser.add_argument('--momentum', type=float, default=0.9, help="momentum for SGD")
+    parser.add_argument('--alpha', type=float, default=0.99, help="alpha for RMSprop")
+    parser.add_argument('--beta1', type=float, default=0.5, help="beta1 for Adam")
+    parser.add_argument('--beta2', type=float, default=0.999, help="beta2 for Adam")
+    parser.add_argument('--optimizer', type=str, default='SGD', help="optimizer, [SGD, Adam, RMSprop]")
     parser.add_argument('--weight_decay', type=float, default=1e-4, help="weight decay of all parameters")
     parser.add_argument('--patience', type=int, default=10, help="patience of learning rate scheduler")
     parser.add_argument('--dampen_factor', type=float, default=0.5, help="dampening factor for learning rate scheduler")
@@ -272,3 +279,6 @@ def parse_args():
 
 if __name__ == '__main__':
     main()
+
+
+
