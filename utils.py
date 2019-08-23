@@ -3,12 +3,13 @@ import torch.nn as nn
 import torch.nn.init as init
 
 class PairwiseRankingLoss(nn.Module):
-    def __init__(self, margin=0.2, method='max', improved=False, intra=0.5):
+    def __init__(self, margin=0.2, method='max', improved=False, intra=0.5, lamb=0.01):
         super(PairwiseRankingLoss, self).__init__()
         self.margin = margin
         self.method = method
         self.improved = improved
         self.intra = intra
+        self.lamb = lamb
 
     # im, sen : (n_samples, dim)
     def forward(self, im, sen):
@@ -37,10 +38,10 @@ class PairwiseRankingLoss(nn.Module):
         elif self.method == "sum":
             pass
 
-        loss = (lossmat_i.sum() + lossmat_c.sum())
+        loss = lossmat_i.sum() + lossmat_c.sum()
 
         if self.improved:
-            loss += (self.intra - sim_mat.diag()).clamp(min=0).sum()
+            loss += self.lamb * ((self.intra - sim_mat.diag()).clamp(min=0).sum())
 
         return loss / n_samples
 

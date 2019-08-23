@@ -54,15 +54,6 @@ def validate(epoch, loader, imenc, capenc, vocab, args):
     im = dset.embedded["image"]
     cap = dset.embedded["caption"]
 
-    # img_ids = dset.embedded["img_id"]
-    # ann_ids = dset.embedded["ann_id"]
-    # idx2im_id = img_ids
-    # idx2cap_id = [a for ann in ann_ids for a in ann]
-    # print(idx2im_id)
-    # print(idx2cap_id)
-    # print(len(img_ids)) # 5000
-    # print(len(ann_ids)) # 25000
-
     nd = im.shape[0]
     nq = cap.shape[0]
     d = im.shape[1]
@@ -107,15 +98,23 @@ def validate(epoch, loader, imenc, capenc, vocab, args):
 def main():
     args = parse_args()
 
-    transform = transforms.Compose([
-        transforms.Resize((args.imsize, args.imsize)),
+    train_transform = transforms.Compose([
+        transforms.RandomResizedCrop(args.imsize),
+        transforms.RandomHorizontalFlip(),
+        transforms.ToTensor(),
+        transforms.Normalize(mean=[0.485, 0.456, 0.406],
+                             std=[0.229, 0.224, 0.225])
+        ])
+    val_transform = transforms.Compose([
+        transforms.Resize(256),
+        transforms.CenterCrop(args.imsize),
         transforms.ToTensor(),
         transforms.Normalize(mean=[0.485, 0.456, 0.406],
                              std=[0.229, 0.224, 0.225])
         ])
     if args.dataset == 'coco':
-        train_dset = CocoDataset(root=args.root_path, transform=transform, mode='one')
-        val_dset = CocoDataset(root=args.root_path, imgdir='val2017', jsonfile='annotations/captions_val2017.json', transform=transform, mode='all')
+        train_dset = CocoDataset(root=args.root_path, transform=train_transform, mode='one')
+        val_dset = CocoDataset(root=args.root_path, imgdir='val2017', jsonfile='annotations/captions_val2017.json', transform=val_transform, mode='all')
     train_loader = DataLoader(train_dset, batch_size=args.batch_size, shuffle=True, num_workers=args.n_cpu, collate_fn=collater)
     val_loader = DataLoader(val_dset, batch_size=args.batch_size, shuffle=False, num_workers=args.n_cpu, collate_fn=collater)
 
@@ -133,13 +132,13 @@ def main():
     cfgs = [{'params' : imenc.parameters(), 'lr' : args.lr_cnn},
             {'params' : capenc.parameters(), 'lr' : args.lr_rnn}]
     if args.optimizer == 'SGD':
-        optimizer = optim.SGD(cfgs, momentum=args.momentum)
+        optimizer = optim.SGD(cfgs, momentum=args.momentum, weight_decay=args.weight_decay)
     elif args.optimizer == 'Adam':
-        optimizer = optim.Adam(cfgs, betas=(args.beta1, args.beta2))
+        optimizer = optim.Adam(cfgs, betas=(args.beta1, args.beta2), weight_decay=args.weight_decay)
     elif args.optimizer == 'RMSprop':
-        optimizer = optim.RMSprop(cfgs, alpha=args.alpha)
+        optimizer = optim.RMSprop(cfgs, alpha=args.alpha, weight_decay=args.weight_decay)
     scheduler = optim.lr_scheduler.ReduceLROnPlateau(optimizer, mode='max', factor=args.dampen_factor, patience=args.patience, verbose=True)
-    lossfunc = PairwiseRankingLoss(margin=args.margin, method=args.method, improved=args.improved, intra=args.intra)
+    lossfunc = PairwiseRankingLoss(margin=args.margin, method=args.method, improved=args.improved, intra=args.intra, lamb=args.imp_weight)
 
     if args.checkpoint is not None:
         print("loading model and optimizer checkpoint from {} ...".format(args.checkpoint), flush=True)
@@ -160,6 +159,7 @@ def main():
     capenc = nn.DataParallel(capenc)
 
     metrics = {}
+    es_cnt = 0
 
     assert offset < args.max_epochs
     for ep in range(offset, args.max_epochs):
@@ -183,28 +183,32 @@ def main():
         if not os.path.exists(savedir):
             os.makedirs(savedir)
 
-        savepath = os.path.join(savedir, "epoch_{:04d}_score_{:05d}.ckpt".format(ep+1, totalscore))
-        if totalscore > bestscore:
-            print("score: {:05d}, saving model and optimizer checkpoint to {} ...".format(totalscore, savepath), flush=True)
-            bestscore = totalscore
-            torch.save(ckpt, savepath)
-        else:
-            print("score: {:05d}, no improvement from best score {:05d}, not saving".format(totalscore, bestscore), flush=True)
-        print("done for epoch {:04d}".format(ep+1), flush=True)
-
         for k, v in data.items():
             if k not in metrics.keys():
                 metrics[k] = [v]
             else:
                 metrics[k].append(v)
 
+        savepath = os.path.join(savedir, "epoch_{:04d}_score_{:05d}.ckpt".format(ep+1, totalscore))
+        if totalscore > bestscore:
+            print("score: {:05d}, saving model and optimizer checkpoint to {} ...".format(totalscore, savepath), flush=True)
+            bestscore = totalscore
+            torch.save(ckpt, savepath)
+            es_cnt = 0
+        else:
+            print("score: {:05d}, no improvement from best score of {:05d}, not saving".format(totalscore, bestscore), flush=True)
+            es_cnt += 1
+            if es_cnt == args.es_cnt:
+                print("early stopping at epoch {:04d} because of no improvement for {} epochs".format(ep+1, args.es_cnt))
+                break
+        print("done for epoch {:04d}".format(ep+1), flush=True)
+
     visualize(metrics, args)
 
 def visualize(metrics, args):
-    savepath = os.path.join("out", args.config_name)
-    if not os.path.exists(savepath):
-        os.makedirs(savepath)
-
+    savedir = os.path.join("out", args.config_name)
+    if not os.path.exists(savedir):
+        os.makedirs(savedir)
     fig = plt.figure(clear=True)
     ax = fig.add_axes([0.1, 0.1, 0.6, 0.75])
     ax.set_title("Recall for lr={}, margin={}, bs={}".format(args.lr_cnn, args.margin, args.batch_size))
@@ -216,7 +220,7 @@ def visualize(metrics, args):
         ax.plot(v, label=k)
 
     ax.legend(bbox_to_anchor=(1.05, 1), loc='upper left', borderaxespad=0)
-    plt.savefig(os.path.join(savepath, "recall.png"))
+    plt.savefig(os.path.join(savedir, "recall.png"))
 
     fig = plt.figure(clear=True)
     ax = fig.add_axes([0.1, 0.1, 0.6, 0.75])
@@ -229,7 +233,7 @@ def visualize(metrics, args):
         ax.plot(v, label=k)
 
     ax.legend(bbox_to_anchor=(1.05, 1), loc='upper left', borderaxespad=0)
-    plt.savefig(os.path.join(savepath, "median.png"))
+    plt.savefig(os.path.join(savedir, "median.png"))
 
 
 def parse_args():
@@ -252,6 +256,7 @@ def parse_args():
     parser.add_argument('--margin', type=float, default=0.2, help="margin for pairwise ranking loss")
     parser.add_argument('--improved', action='store_true', help="improved triplet loss")
     parser.add_argument('--intra', type=float, default=0.5, help="beta for improved triplet loss")
+    parser.add_argument('--imp_weight', type=float, default=1e-2, help="weight for improved ranking loss")
     parser.add_argument('--emb_size', type=int, default=512, help="embedding size of vocabulary")
     parser.add_argument('--out_size', type=int, default=512, help="embedding size for output vectors")
     parser.add_argument('--max_epochs', type=int, default=100, help="max number of epochs to train for")
@@ -271,6 +276,7 @@ def parse_args():
     parser.add_argument('--optimizer', type=str, default='SGD', help="optimizer, [SGD, Adam, RMSprop]")
     parser.add_argument('--weight_decay', type=float, default=1e-4, help="weight decay of all parameters")
     parser.add_argument('--patience', type=int, default=10, help="patience of learning rate scheduler")
+    parser.add_argument('--es_cnt', type=int, default=20, help="threshold epoch for early stopping")
     parser.add_argument('--dampen_factor', type=float, default=0.5, help="dampening factor for learning rate scheduler")
 
     args = parser.parse_args()
