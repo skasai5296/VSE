@@ -8,6 +8,7 @@ import torch
 import torch.nn as nn
 import torch.optim as optim
 from torch.utils.data import DataLoader
+from torch.nn.utils.clip_grad import clip_grad_norm_
 import torchvision
 import torchvision.transforms as transforms
 import faiss
@@ -27,6 +28,7 @@ def train(epoch, loader, imenc, capenc, optimizer, lossfunc, vocab, args):
         """image, target, index, img_id"""
         image = data["image"]
         caption = data["caption"]
+        caption = [i[np.random.randint(0, len(i))] for i in caption]
         img_id = data["img_id"]
         target = vocab.return_idx(caption)
         lengths = target.ne(vocab.padidx).sum(dim=1)
@@ -40,6 +42,13 @@ def train(epoch, loader, imenc, capenc, optimizer, lossfunc, vocab, args):
         cap_emb = capenc(target, lengths)
         lossval = lossfunc(im_emb, cap_emb)
         lossval.backward()
+        # clip gradient norm
+        if args.grad_clip > 0:
+            clip_grad_norm_(imenc.parameters(), args.grad_clip)
+            clip_grad_norm_(capenc.parameters(), args.grad_clip)
+        # freeze cnn for x epochs
+        if args.freeze_ep+1 > epoch:
+            imenc.cnn.grad.data.zero_()
         optimizer.step()
         cumloss += lossval.item()
         if it % args.log_every == args.log_every-1:
@@ -67,8 +76,9 @@ def validate(epoch, loader, imenc, capenc, vocab, args):
     allrank = []
 
     # TODO: Make more efficient, do not hardcode 5
-    for i in range(5):
-        gt = (np.arange(nd) * 5).reshape(-1, 1) + i
+    cap_per_image = 5
+    for i in range(cap_per_image):
+        gt = (np.arange(nd) * cap_per_image).reshape(-1, 1) + i
         rank = np.where(I == gt)[1]
         allrank.append(rank)
     allrank = np.stack(allrank)
@@ -76,17 +86,19 @@ def validate(epoch, loader, imenc, capenc, vocab, args):
     for rank in [1, 5, 10, 20]:
         data["i2c_recall@{}".format(rank)] = 100 * np.sum(allrank < rank) / len(allrank)
     data["i2c_median@r"] = np.median(allrank) + 1
+    data["i2c_mean@r"] = np.mean(allrank)
 
     # cap2im
     cpu_index.reset()
     cpu_index.add(im)
     D, I = cpu_index.search(cap, nd)
     # TODO: Make more efficient, do not hardcode 5
-    gt = np.arange(nq).reshape(-1, 1) // 5
+    gt = np.arange(nq).reshape(-1, 1) // cap_per_image
     allrank = np.where(I == gt)[1]
     for rank in [1, 5, 10, 20]:
         data["c2i_recall@{}".format(rank)] = 100 * np.sum(allrank < rank) / len(allrank)
     data["c2i_median@r"] = np.median(allrank) + 1
+    data["c2i_mean@r"] = np.mean(allrank)
 
     print("-"*50)
     print("results of cross-modal retrieval")
@@ -113,8 +125,8 @@ def main():
                              std=[0.229, 0.224, 0.225])
         ])
     if args.dataset == 'coco':
-        train_dset = CocoDataset(root=args.root_path, transform=train_transform, mode='one')
-        val_dset = CocoDataset(root=args.root_path, imgdir='val2017', jsonfile='annotations/captions_val2017.json', transform=val_transform, mode='all')
+        train_dset = CocoDataset(root=args.root_path, transform=train_transform)
+        val_dset = CocoDataset(root=args.root_path, imgdir='val2017', jsonfile='annotations/captions_val2017.json', transform=val_transform)
     train_loader = DataLoader(train_dset, batch_size=args.batch_size, shuffle=True, num_workers=args.n_cpu, collate_fn=collater)
     val_loader = DataLoader(val_dset, batch_size=args.batch_size, shuffle=False, num_workers=args.n_cpu, collate_fn=collater)
 
@@ -129,7 +141,8 @@ def main():
     imenc = imenc.to(device)
     capenc = capenc.to(device)
 
-    cfgs = [{'params' : imenc.parameters(), 'lr' : args.lr_cnn},
+    cfgs = [{'params' : imenc.fc.parameters(), 'lr' : args.lr_cnn},
+            {'params' : imenc.cnn.parameters(), 'lr' : args.lr_cnn}]
             {'params' : capenc.parameters(), 'lr' : args.lr_rnn}]
     if args.optimizer == 'SGD':
         optimizer = optim.SGD(cfgs, momentum=args.momentum, weight_decay=args.weight_decay)
@@ -247,7 +260,7 @@ def parse_args():
     parser.add_argument('--config_name', type=str, default='default/', help='Path to save checkpoints and figures to when training')
 
     # configurations of models
-    parser.add_argument('--cnn_type', type=str, default="resnet18", help="architecture of cnn")
+    parser.add_argument('--cnn_type', type=str, default="resnet101", help="architecture of cnn")
     parser.add_argument('--rnn_type', type=str, default="LSTM", help="architecture of rnn")
 
     # training config
@@ -257,9 +270,10 @@ def parse_args():
     parser.add_argument('--improved', action='store_true', help="improved triplet loss")
     parser.add_argument('--intra', type=float, default=0.5, help="beta for improved triplet loss")
     parser.add_argument('--imp_weight', type=float, default=1e-2, help="weight for improved ranking loss")
-    parser.add_argument('--emb_size', type=int, default=512, help="embedding size of vocabulary")
-    parser.add_argument('--out_size', type=int, default=512, help="embedding size for output vectors")
-    parser.add_argument('--max_epochs', type=int, default=100, help="max number of epochs to train for")
+    parser.add_argument('--freeze_ep', type=int, default=15, help="how many epochs to freeze the CNN encoder")
+    parser.add_argument('--emb_size', type=int, default=300, help="embedding size of vocabulary")
+    parser.add_argument('--out_size', type=int, default=1024, help="embedding size for output vectors")
+    parser.add_argument('--max_epochs', type=int, default=50, help="max number of epochs to train for")
     parser.add_argument('--max_len', type=int, default=30, help="max length of sentences")
     parser.add_argument('--log_every', type=int, default=10, help="log every x iterations")
     parser.add_argument('--no_cuda', action='store_true', help="disable cuda")
@@ -267,14 +281,15 @@ def parse_args():
     # hyperparams
     parser.add_argument('--imsize', type=int, default=224, help="image size to train on.")
     parser.add_argument('--batch_size', type=int, default=128, help="batch size. must be a large number for negatives")
-    parser.add_argument('--lr_cnn', type=float, default=1e-2, help="learning rate of cnn")
-    parser.add_argument('--lr_rnn', type=float, default=1e-2, help="learning rate of rnn")
+    parser.add_argument('--lr_cnn', type=float, default=2e-4, help="learning rate of cnn")
+    parser.add_argument('--lr_rnn', type=float, default=2e-4, help="learning rate of rnn")
     parser.add_argument('--momentum', type=float, default=0.9, help="momentum for SGD")
     parser.add_argument('--alpha', type=float, default=0.99, help="alpha for RMSprop")
     parser.add_argument('--beta1', type=float, default=0.5, help="beta1 for Adam")
     parser.add_argument('--beta2', type=float, default=0.999, help="beta2 for Adam")
-    parser.add_argument('--optimizer', type=str, default='SGD', help="optimizer, [SGD, Adam, RMSprop]")
-    parser.add_argument('--weight_decay', type=float, default=1e-4, help="weight decay of all parameters")
+    parser.add_argument('--optimizer', type=str, default='Adam', help="optimizer, [SGD, Adam, RMSprop]")
+    parser.add_argument('--weight_decay', type=float, default=1e-5, help="weight decay of all parameters")
+    parser.add_argument('--grad_clip', type=float, default=2, help="gradient norm clipping")
     parser.add_argument('--patience', type=int, default=10, help="patience of learning rate scheduler")
     parser.add_argument('--es_cnt', type=int, default=20, help="threshold epoch for early stopping")
     parser.add_argument('--dampen_factor', type=float, default=0.5, help="dampening factor for learning rate scheduler")

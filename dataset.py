@@ -19,7 +19,7 @@ sp = spacy.load("en_core_web_sm")
 class CocoDataset(Dataset):
     """COCO Custom Dataset compatible with torch.utils.data.DataLoader."""
 
-    def __init__(self, root, imgdir='train2017', jsonfile='annotations/captions_train2017.json', transform=None, mode='one'):
+    def __init__(self, root, imgdir='train2017', jsonfile='annotations/captions_train2017.json', transform=None):
         """
         Args:
             root: root directory.
@@ -32,7 +32,6 @@ class CocoDataset(Dataset):
         self.imgids = self.coco.getImgIds()
         self.annids = [self.coco.getAnnIds(id) for id in self.imgids]
         self.transform = transform
-        self.mode = mode
 
     def __getitem__(self, index):
 
@@ -42,13 +41,9 @@ class CocoDataset(Dataset):
         image = Image.open(os.path.join(self.img_dir, path)).convert('RGB')
         caption = [obj['caption'] for obj in self.coco.loadAnns(ann_id)]
 
-        if self.mode == 'one': # get random caption
-            capid = np.random.randint(0, len(caption))
-            caption = caption[capid]
-            ann_id = ann_id[capid]
-        elif self.mode == 'all': # restrict to 5 captions
-            caption = caption[:5]
-            ann_id = ann_id[:5]
+        # restrict to 5 captions
+        caption = caption[:5]
+        ann_id = ann_id[:5]
 
         if self.transform is not None:
             image = self.transform(image)

@@ -97,33 +97,35 @@ def weight_init(m):
         init.constant_(m.weight, 1)
         init.constant_(m.bias, 0)
     elif isinstance(m, nn.Linear):
-        init.xavier_normal_(m.weight.data)
+        init.xavier_uniform_(m.weight.data)
         if m.bias is not None:
-            init.normal_(m.bias.data)
+            init.zeros_(m.bias.data)
     elif isinstance(m, nn.LSTM):
         for param in m.parameters():
             if len(param.shape) >= 2:
-                init.orthogonal_(param.data)
+                init.xavier_uniform_(param.data)
             else:
-                init.normal_(param.data)
+                init.zeros_(param.data)
     elif isinstance(m, nn.LSTMCell):
         for param in m.parameters():
             if len(param.shape) >= 2:
-                init.orthogonal_(param.data)
+                init.xavier_uniform_(param.data)
             else:
-                init.normal_(param.data)
+                init.zeros_(param.data)
     elif isinstance(m, nn.GRU):
         for param in m.parameters():
             if len(param.shape) >= 2:
-                init.orthogonal_(param.data)
+                init.xavier_uniform_(param.data)
             else:
-                init.normal_(param.data)
+                init.zeros_(param.data)
     elif isinstance(m, nn.GRUCell):
         for param in m.parameters():
             if len(param.shape) >= 2:
-                init.orthogonal_(param.data)
+                init.xavier_uniform_(param.data)
             else:
-                init.normal_(param.data)
+                init.zeros_(param.data)
+    elif isinstance(m, nn.Embedding):
+        init.uniform_(m.weight.data)
 
 def sec2str(sec):
     if sec < 60:

@@ -33,7 +33,6 @@ class ImageEncoder(nn.Module):
             self.cnn.apply(weight_init)
         self.fc.apply(weight_init)
 
-
     def forward(self, x):
         resout = self.cnn(x)
         out = self.fc(resout)
@@ -43,8 +42,8 @@ class ImageEncoder(nn.Module):
 class CaptionEncoder(nn.Module):
     def __init__(self, vocab_size, emb_size=256, out_size=256, rnn_type="LSTM", padidx=0):
         super(CaptionEncoder, self).__init__()
+        self.out_size = out_size
         self.padidx = padidx
-        self.emb_size = emb_size
         self.emb = nn.Embedding(vocab_size, emb_size)
         self.rnn = getattr(nn, rnn_type)(emb_size, out_size, batch_first=True)
 
@@ -58,9 +57,11 @@ class CaptionEncoder(nn.Module):
         # packed: PackedSequence of (bs, seq, emb_size)
         packed = pack_padded_sequence(emb, lengths, batch_first=True, enforce_sorted=False)
         output, _ = self.rnn(packed)
-        # hn: (bs, seq, emb_size)
+        # output: (bs, seq, out_size)
         output = pad_packed_sequence(output, batch_first=True, padding_value=self.padidx)[0]
-        lengths = lengths.view(-1, 1, 1).expand(-1, -1, self.emb_size) - 1
+        # lengths: (bs, 1, out_size)
+        lengths = lengths.view(-1, 1, 1).expand(-1, -1, self.out_size) - 1
+        # out: (bs, out_size)
         out = torch.gather(output, 1, lengths).squeeze(1)
         normed_out = l2normalize(out)
         return normed_out
