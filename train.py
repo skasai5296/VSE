@@ -38,7 +38,9 @@ def train(epoch, loader, imenc, capenc, optimizer, lossfunc, vocab, args):
         image = image.to(device)
         target = target.to(device)
 
-        im_emb = imenc(image)
+        # freeze cnn for x epochs
+        if args.freeze_ep+1 > epoch:
+            im_emb = imenc(image, freeze=True)
         cap_emb = capenc(target, lengths)
         lossval = lossfunc(im_emb, cap_emb)
         lossval.backward()
@@ -46,9 +48,6 @@ def train(epoch, loader, imenc, capenc, optimizer, lossfunc, vocab, args):
         if args.grad_clip > 0:
             clip_grad_norm_(imenc.parameters(), args.grad_clip)
             clip_grad_norm_(capenc.parameters(), args.grad_clip)
-        # freeze cnn for x epochs
-        if args.freeze_ep+1 > epoch:
-            imenc.cnn.grad.data.zero_()
         optimizer.step()
         cumloss += lossval.item()
         if it % args.log_every == args.log_every-1:
@@ -142,7 +141,7 @@ def main():
     capenc = capenc.to(device)
 
     cfgs = [{'params' : imenc.fc.parameters(), 'lr' : args.lr_cnn},
-            {'params' : imenc.cnn.parameters(), 'lr' : args.lr_cnn}]
+            {'params' : imenc.cnn.parameters(), 'lr' : args.lr_cnn},
             {'params' : capenc.parameters(), 'lr' : args.lr_rnn}]
     if args.optimizer == 'SGD':
         optimizer = optim.SGD(cfgs, momentum=args.momentum, weight_decay=args.weight_decay)
@@ -150,7 +149,10 @@ def main():
         optimizer = optim.Adam(cfgs, betas=(args.beta1, args.beta2), weight_decay=args.weight_decay)
     elif args.optimizer == 'RMSprop':
         optimizer = optim.RMSprop(cfgs, alpha=args.alpha, weight_decay=args.weight_decay)
-    scheduler = optim.lr_scheduler.ReduceLROnPlateau(optimizer, mode='max', factor=args.dampen_factor, patience=args.patience, verbose=True)
+    if args.scheduler == 'Plateau':
+        scheduler = optim.lr_scheduler.ReduceLROnPlateau(optimizer, mode='max', factor=args.dampen_factor, patience=args.patience, verbose=True)
+    elif args.scheduler == 'Step':
+        scheduler = optim.lr_scheduler.StepLR(optimizer, step_size=args.patience, gamma=0.1, verbose=True)
     lossfunc = PairwiseRankingLoss(margin=args.margin, method=args.method, improved=args.improved, intra=args.intra, lamb=args.imp_weight)
 
     if args.checkpoint is not None:
@@ -180,7 +182,8 @@ def main():
         data = validate(ep+1, val_loader, imenc, capenc, vocab, args)
         totalscore = 0
         for rank in [1, 5, 10, 20]:
-            totalscore += int(100 * (data["i2c_recall@{}".format(rank)] + data["c2i_recall@{}".format(rank)]))
+            totalscore += data["i2c_recall@{}".format(rank)] + data["c2i_recall@{}".format(rank)]
+        totalscore = int(totalscore)
         scheduler.step(totalscore)
 
         # save checkpoint
@@ -202,21 +205,22 @@ def main():
             else:
                 metrics[k].append(v)
 
-        savepath = os.path.join(savedir, "epoch_{:04d}_score_{:05d}.ckpt".format(ep+1, totalscore))
-        if totalscore > bestscore:
-            print("score: {:05d}, saving model and optimizer checkpoint to {} ...".format(totalscore, savepath), flush=True)
+        savepath = os.path.join(savedir, "epoch_{:04d}_score_{:03d}.ckpt".format(ep+1, totalscore))
+        if int(totalscore) > int(bestscore):
+            print("score: {:03d}, saving model and optimizer checkpoint to {} ...".format(totalscore, savepath), flush=True)
             bestscore = totalscore
             torch.save(ckpt, savepath)
             es_cnt = 0
         else:
-            print("score: {:05d}, no improvement from best score of {:05d}, not saving".format(totalscore, bestscore), flush=True)
+            print("score: {:03d}, no improvement from best score of {:03d}, not saving".format(totalscore, bestscore), flush=True)
             es_cnt += 1
             if es_cnt == args.es_cnt:
-                print("early stopping at epoch {:04d} because of no improvement for {} epochs".format(ep+1, args.es_cnt))
+                print("early stopping at epoch {} because of no improvement for {} epochs".format(ep+1, args.es_cnt))
                 break
         print("done for epoch {:04d}".format(ep+1), flush=True)
 
     visualize(metrics, args)
+    print("complete training")
 
 def visualize(metrics, args):
     savedir = os.path.join("out", args.config_name)
@@ -228,9 +232,8 @@ def visualize(metrics, args):
     ax.set_xlabel("Epochs")
     ax.set_ylabel("Recall")
     for k, v in metrics.items():
-        if "median" in k:
-            continue
-        ax.plot(v, label=k)
+        if "recall" in k:
+            ax.plot(v, label=k)
 
     ax.legend(bbox_to_anchor=(1.05, 1), loc='upper left', borderaxespad=0)
     plt.savefig(os.path.join(savedir, "recall.png"))
@@ -241,9 +244,8 @@ def visualize(metrics, args):
     ax.set_xlabel("Epochs")
     ax.set_ylabel("Median")
     for k, v in metrics.items():
-        if "recall" in k:
-            continue
-        ax.plot(v, label=k)
+        if "median" in k:
+            ax.plot(v, label=k)
 
     ax.legend(bbox_to_anchor=(1.05, 1), loc='upper left', borderaxespad=0)
     plt.savefig(os.path.join(savedir, "median.png"))
@@ -288,6 +290,7 @@ def parse_args():
     parser.add_argument('--beta1', type=float, default=0.5, help="beta1 for Adam")
     parser.add_argument('--beta2', type=float, default=0.999, help="beta2 for Adam")
     parser.add_argument('--optimizer', type=str, default='Adam', help="optimizer, [SGD, Adam, RMSprop]")
+    parser.add_argument('--scheduler', type=str, default='Plateau', help="learning rate scheduler, [Plateau, Step]")
     parser.add_argument('--weight_decay', type=float, default=1e-5, help="weight decay of all parameters")
     parser.add_argument('--grad_clip', type=float, default=2, help="gradient norm clipping")
     parser.add_argument('--patience', type=int, default=10, help="patience of learning rate scheduler")

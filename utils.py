@@ -13,6 +13,7 @@ class PairwiseRankingLoss(nn.Module):
 
     # im, sen : (n_samples, dim)
     def forward(self, im, sen):
+        assert im.size() == sen.size()
         n_samples = im.size(0)
         # sim_mat : (n_samples, n_samples)
         sim_mat = im.mm(sen.t())
