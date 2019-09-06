@@ -41,6 +41,8 @@ def train(epoch, loader, imenc, capenc, optimizer, lossfunc, vocab, args):
         # freeze cnn for x epochs
         if args.freeze_ep+1 > epoch:
             im_emb = imenc(image, freeze=True)
+        else:
+            im_emb = imenc(image, freeze=False)
         cap_emb = capenc(target, lengths)
         lossval = lossfunc(im_emb, cap_emb)
         lossval.backward()
@@ -152,7 +154,7 @@ def main():
     if args.scheduler == 'Plateau':
         scheduler = optim.lr_scheduler.ReduceLROnPlateau(optimizer, mode='max', factor=args.dampen_factor, patience=args.patience, verbose=True)
     elif args.scheduler == 'Step':
-        scheduler = optim.lr_scheduler.StepLR(optimizer, step_size=args.patience, gamma=0.1, verbose=True)
+        scheduler = optim.lr_scheduler.StepLR(optimizer, step_size=args.patience, gamma=args.dampen_factor)
     lossfunc = PairwiseRankingLoss(margin=args.margin, method=args.method, improved=args.improved, intra=args.intra, lamb=args.imp_weight)
 
     if args.checkpoint is not None:
@@ -184,7 +186,10 @@ def main():
         for rank in [1, 5, 10, 20]:
             totalscore += data["i2c_recall@{}".format(rank)] + data["c2i_recall@{}".format(rank)]
         totalscore = int(totalscore)
-        scheduler.step(totalscore)
+        if args.scheduler == 'Plateau':
+            scheduler.step(totalscore)
+        if args.scheduler == 'Step':
+            scheduler.step()
 
         # save checkpoint
         ckpt = {
@@ -287,15 +292,15 @@ def parse_args():
     parser.add_argument('--lr_rnn', type=float, default=2e-4, help="learning rate of rnn")
     parser.add_argument('--momentum', type=float, default=0.9, help="momentum for SGD")
     parser.add_argument('--alpha', type=float, default=0.99, help="alpha for RMSprop")
-    parser.add_argument('--beta1', type=float, default=0.5, help="beta1 for Adam")
+    parser.add_argument('--beta1', type=float, default=0.9, help="beta1 for Adam")
     parser.add_argument('--beta2', type=float, default=0.999, help="beta2 for Adam")
     parser.add_argument('--optimizer', type=str, default='Adam', help="optimizer, [SGD, Adam, RMSprop]")
-    parser.add_argument('--scheduler', type=str, default='Plateau', help="learning rate scheduler, [Plateau, Step]")
+    parser.add_argument('--scheduler', type=str, default='Step', help="learning rate scheduler, [Plateau, Step]")
     parser.add_argument('--weight_decay', type=float, default=1e-5, help="weight decay of all parameters")
     parser.add_argument('--grad_clip', type=float, default=2, help="gradient norm clipping")
-    parser.add_argument('--patience', type=int, default=10, help="patience of learning rate scheduler")
-    parser.add_argument('--es_cnt', type=int, default=20, help="threshold epoch for early stopping")
-    parser.add_argument('--dampen_factor', type=float, default=0.5, help="dampening factor for learning rate scheduler")
+    parser.add_argument('--patience', type=int, default=15, help="patience of learning rate scheduler")
+    parser.add_argument('--dampen_factor', type=float, default=0.1, help="dampening factor for learning rate scheduler")
+    parser.add_argument('--es_cnt', type=int, default=30, help="threshold epoch for early stopping")
 
     args = parser.parse_args()
 
