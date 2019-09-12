@@ -3,4 +3,4 @@ models/
 logs/
 out/
 .ipynb_checkpoints
-visualize.ipynb
+*.ipynb
