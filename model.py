@@ -33,12 +33,8 @@ class ImageEncoder(nn.Module):
             self.cnn.apply(weight_init)
         self.fc.apply(weight_init)
 
-    def forward(self, x, freeze=False):
-        if freeze:
-            with torch.no_grad():
-                resout = self.cnn(x)
-        else:
-            resout = self.cnn(x)
+    def forward(self, x):
+        resout = self.cnn(x)
         out = self.fc(resout)
         normed_out = l2normalize(out)
         return normed_out

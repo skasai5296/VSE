@@ -36,6 +36,18 @@ This directory would be denoted `$ROOTPATH`.
 ```bash
 $ python train.py --root_path $ROOTPATH
 ```
+## Reported Scores
+### Image to Caption
+|  | R@1 | R@5 | R@10 | Med r|
+| --- | --- | --- | --- | --- |
+| VSE++ | 41.3 | 71.1 | 81.2 | 2.0 |
+| Our Implementation | 28.3 | 54.7 | 67.5 | 4.0 |
+
+### Caption to Image
+|  | R@1 | R@5 | R@10 | Med r|
+| --- | --- | --- | --- | --- |
+| VSE++ | 30.3 | 59.4 | 72.4 | 4.0 |
+| Our Implementation | 19.8 | 44.2 | 57.1 | 69.8 |
 
 ## Evaluation, Visualization
 ```bash

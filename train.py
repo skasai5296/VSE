@@ -38,11 +38,7 @@ def train(epoch, loader, imenc, capenc, optimizer, lossfunc, vocab, args):
         image = image.to(device)
         target = target.to(device)
 
-        # freeze cnn for x epochs
-        if args.freeze_ep+1 > epoch:
-            im_emb = imenc(image, freeze=True)
-        else:
-            im_emb = imenc(image, freeze=False)
+        im_emb = imenc(image)
         cap_emb = capenc(target, lengths)
         lossval = lossfunc(im_emb, cap_emb)
         lossval.backward()
@@ -110,16 +106,18 @@ def validate(epoch, loader, imenc, capenc, vocab, args):
 
 def main():
     args = parse_args()
+    print(args)
 
     train_transform = transforms.Compose([
-        transforms.RandomResizedCrop(args.imsize),
+        transforms.Resize(args.imsize_pre),
+        transforms.RandomCrop(args.imsize),
         transforms.RandomHorizontalFlip(),
         transforms.ToTensor(),
         transforms.Normalize(mean=[0.485, 0.456, 0.406],
                              std=[0.229, 0.224, 0.225])
         ])
     val_transform = transforms.Compose([
-        transforms.Resize(256),
+        transforms.Resize(args.imsize_pre),
         transforms.CenterCrop(args.imsize),
         transforms.ToTensor(),
         transforms.Normalize(mean=[0.485, 0.456, 0.406],
@@ -143,7 +141,6 @@ def main():
     capenc = capenc.to(device)
 
     cfgs = [{'params' : imenc.fc.parameters(), 'lr' : args.lr_cnn},
-            {'params' : imenc.cnn.parameters(), 'lr' : args.lr_cnn},
             {'params' : capenc.parameters(), 'lr' : args.lr_rnn}]
     if args.optimizer == 'SGD':
         optimizer = optim.SGD(cfgs, momentum=args.momentum, weight_decay=args.weight_decay)
@@ -163,12 +160,14 @@ def main():
         imenc.load_state_dict(ckpt["encoder_state"])
         capenc.load_state_dict(ckpt["decoder_state"])
         optimizer.load_state_dict(ckpt["optimizer_state"])
-        scheduler.load_state_dict(ckpt["scheduler_state"])
+        if args.scheduler != 'None':
+            scheduler.load_state_dict(ckpt["scheduler_state"])
         offset = ckpt["epoch"]
         data = ckpt["stats"]
         bestscore = 0
         for rank in [1, 5, 10, 20]:
-            bestscore += int(100 * (data["i2c_recall@{}".format(rank)] + data["c2i_recall@{}".format(rank)]))
+            bestscore += data["i2c_recall@{}".format(rank)] + data["c2i_recall@{}".format(rank)]
+        bestscore = int(bestscore)
     else:
         offset = 0
         bestscore = -1
@@ -180,6 +179,8 @@ def main():
 
     assert offset < args.max_epochs
     for ep in range(offset, args.max_epochs):
+        if ep == args.freeze_ep:
+            optimizer.add_param_group({'params': imenc.module.cnn.parameters(), 'lr': args.lr_cnn})
         train(ep+1, train_loader, imenc, capenc, optimizer, lossfunc, vocab, args)
         data = validate(ep+1, val_loader, imenc, capenc, vocab, args)
         totalscore = 0
@@ -197,9 +198,10 @@ def main():
                 "epoch": ep+1,
                 "encoder_state": imenc.module.state_dict(),
                 "decoder_state": capenc.module.state_dict(),
-                "optimizer_state": optimizer.state_dict(),
-                "scheduler_state": scheduler.state_dict()
+                "optimizer_state": optimizer.state_dict()
                 }
+        if args.scheduler != 'None':
+            ckpt['scheduler_state'] = scheduler.state_dict()
         savedir = os.path.join("models", args.config_name)
         if not os.path.exists(savedir):
             os.makedirs(savedir)
@@ -255,6 +257,18 @@ def visualize(metrics, args):
     ax.legend(bbox_to_anchor=(1.05, 1), loc='upper left', borderaxespad=0)
     plt.savefig(os.path.join(savedir, "median.png"))
 
+    fig = plt.figure(clear=True)
+    ax = fig.add_axes([0.1, 0.1, 0.6, 0.75])
+    ax.set_title("Mean ranking for lr={}, margin={}, bs={}".format(args.lr_cnn, args.margin, args.batch_size))
+    ax.set_xlabel("Epochs")
+    ax.set_ylabel("Mean")
+    for k, v in metrics.items():
+        if "mean" in k:
+            ax.plot(v, label=k)
+
+    ax.legend(bbox_to_anchor=(1.05, 1), loc='upper left', borderaxespad=0)
+    plt.savefig(os.path.join(savedir, "mean.png"))
+
 
 def parse_args():
     parser = argparse.ArgumentParser()
@@ -277,7 +291,7 @@ def parse_args():
     parser.add_argument('--improved', action='store_true', help="improved triplet loss")
     parser.add_argument('--intra', type=float, default=0.5, help="beta for improved triplet loss")
     parser.add_argument('--imp_weight', type=float, default=1e-2, help="weight for improved ranking loss")
-    parser.add_argument('--freeze_ep', type=int, default=15, help="how many epochs to freeze the CNN encoder")
+    parser.add_argument('--freeze_ep', type=int, default=15, help="at which epoch to unfreeze the CNN encoder")
     parser.add_argument('--emb_size', type=int, default=300, help="embedding size of vocabulary")
     parser.add_argument('--out_size', type=int, default=1024, help="embedding size for output vectors")
     parser.add_argument('--max_epochs', type=int, default=50, help="max number of epochs to train for")
@@ -286,6 +300,7 @@ def parse_args():
     parser.add_argument('--no_cuda', action='store_true', help="disable cuda")
 
     # hyperparams
+    parser.add_argument('--imsize_pre', type=int, default=256, help="to what size to crop the image")
     parser.add_argument('--imsize', type=int, default=224, help="image size to train on.")
     parser.add_argument('--batch_size', type=int, default=128, help="batch size. must be a large number for negatives")
     parser.add_argument('--lr_cnn', type=float, default=2e-4, help="learning rate of cnn")
@@ -296,9 +311,9 @@ def parse_args():
     parser.add_argument('--beta2', type=float, default=0.999, help="beta2 for Adam")
     parser.add_argument('--optimizer', type=str, default='Adam', help="optimizer, [SGD, Adam, RMSprop]")
     parser.add_argument('--scheduler', type=str, default='Step', help="learning rate scheduler, [Plateau, Step]")
-    parser.add_argument('--weight_decay', type=float, default=1e-5, help="weight decay of all parameters")
-    parser.add_argument('--grad_clip', type=float, default=2, help="gradient norm clipping")
     parser.add_argument('--patience', type=int, default=15, help="patience of learning rate scheduler")
+    parser.add_argument('--weight_decay', type=float, default=0, help="weight decay of all parameters, unrecommended")
+    parser.add_argument('--grad_clip', type=float, default=2, help="gradient norm clipping")
     parser.add_argument('--dampen_factor', type=float, default=0.1, help="dampening factor for learning rate scheduler")
     parser.add_argument('--es_cnt', type=int, default=30, help="threshold epoch for early stopping")
 
