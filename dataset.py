@@ -25,7 +25,7 @@ class CocoDataset(Dataset):
             root: root directory.
             json: coco annotation file path.
             transform: transformer for image.
-        /home/seito/hdd/dsets/coco/train2017 """
+        """
         self.coco = COCO(os.path.join(root, jsonfile))
         self.img_dir = os.path.join(root, imgdir)
 
@@ -113,7 +113,7 @@ class EmbedDataset(Dataset):
             caption = data["caption"]
             caption = [c for cap in caption for c in cap]
             cap = vocab.return_idx(caption)
-            lengths = cap.ne(vocab.padidx).sum(dim=1)
+            lengths = cap.ne(vocab.padidx).sum(dim=1).to(device)
             im = im.to(device)
             cap = cap.to(device)
             with torch.no_grad():

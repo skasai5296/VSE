@@ -156,12 +156,13 @@ def parse_args():
 
     # training config
     parser.add_argument('--n_cpu', type=int, default=8)
-    parser.add_argument('--emb_size', type=int, default=512, help="embedding size of vocabulary")
-    parser.add_argument('--out_size', type=int, default=512, help="embedding size for output vectors")
+    parser.add_argument('--emb_size', type=int, default=300, help="embedding size of vocabulary")
+    parser.add_argument('--out_size', type=int, default=1024, help="embedding size for output vectors")
     parser.add_argument('--max_len', type=int, default=30)
     parser.add_argument('--no_cuda', action='store_true', help="disable gpu training")
 
     # hyperparams
+    parser.add_argument('--imsize_pre', type=int, default=256, help="to what size to crop the image")
     parser.add_argument('--imsize', type=int, default=224, help="image size to resize on")
     parser.add_argument('--batch_size', type=int, default=128, help="batch size. irrelevant")
 
