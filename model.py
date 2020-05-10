@@ -145,11 +145,8 @@ class SimpleDecoder(nn.Module):
         """
         bs = caption.size(0)
         scale = bs // feature.size(0)
-        print(feature.size(), caption.size(), length.size())
         if scale > 1:
             feature = torch.repeat_interleave(feature, scale, dim=0)
-        print(feature.size(), caption.size(), length.size())
-        print((feature[0] == feature[1]).all())
         # hn, cn: (bs x memory_dim)
         hn = self.init_h(feature)
         cn = self.init_c(feature)

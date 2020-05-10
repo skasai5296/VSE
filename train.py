@@ -63,7 +63,6 @@ def train(epoch, loader, model, optimizer, lossfunc, vocab, args):
                 flush=True,
             )
             metrics = {}
-            break
 
 
 def validate(epoch, loader, model, vocab, args):
