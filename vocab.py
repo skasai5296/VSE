@@ -1,37 +1,53 @@
-import sys, os
-import time
 import json
+import os
 import pickle
+import sys
+import time
 
+import spacy
 import torch
 import torchtext
-import spacy
 
 from utils import sec2str
 
-sp = spacy.load('en_core_web_sm')
+sp = spacy.load("en_core_web_sm")
 
 
-class Vocabulary():
+class Vocabulary:
     def __init__(self, min_freq=5, max_len=30):
         self.min_freq = min_freq
         self.max_len = max_len
-        self.text_proc = torchtext.data.Field(sequential=True, init_token="<bos>", eos_token="<eos>", lower=True, fix_length=self.max_len, tokenize="spacy", batch_first=True)
+        self.text_proc = torchtext.data.Field(
+            sequential=True,
+            init_token="<bos>",
+            eos_token="<eos>",
+            lower=True,
+            fix_length=self.max_len,
+            tokenize="spacy",
+            batch_first=True,
+        )
 
-    """
-    build vocabulary from textfile.
-    """
     def load_vocab(self, textfile):
+        """
+        build vocabulary from textfile.
+        """
         before = time.time()
         print("building vocabulary...", flush=True)
-        with open(textfile, 'r') as f:
+        with open(textfile, "r") as f:
             sentences = f.readlines()
         sent_proc = list(map(self.text_proc.preprocess, sentences))
         self.text_proc.build_vocab(sent_proc, min_freq=self.min_freq)
         self.len = len(self.text_proc.vocab)
         self.padidx = self.text_proc.vocab.stoi["<pad>"]
-        print("done building vocabulary, minimum frequency is {} times".format(self.min_freq), flush=True)
-        print("# of words in vocab: {} | {}".format(self.len, sec2str(time.time()-before)), flush=True)
+        self.bosidx = self.text_proc.vocab.stoi["<bos>"]
+        print(
+            "done building vocabulary, minimum frequency is {} times".format(self.min_freq),
+            flush=True,
+        )
+        print(
+            "# of words in vocab: {} | {}".format(self.len, sec2str(time.time() - before)),
+            flush=True,
+        )
 
     # sentence_batch: list of str
     # return indexes of sentence batch as torch.LongTensor
@@ -54,18 +70,22 @@ class Vocabulary():
     def __len__(self):
         return self.len
 
+
 # build caption txt file from coco annotation json file
+
+
 def cococap2txt(jsonfile, dst):
     sentences = []
-    with open(jsonfile, 'r') as f:
+    with open(jsonfile, "r") as f:
         alldata = json.load(f)
     for ann in alldata["annotations"]:
         sentences.append(ann["caption"].strip())
-    with open(dst, 'w+') as f:
+    with open(dst, "w+") as f:
         f.write("\n".join(sentences))
 
+
 # for debugging
-if __name__ == '__main__':
+if __name__ == "__main__":
 
     file = "/home/seito/hdd/dsets/coco/annotations/captions_train2017.json"
     dest = "captions_train2017.txt"
@@ -79,5 +99,3 @@ if __name__ == '__main__':
     print(ten)
     sent = vocab.return_sentences(ten)
     print(sent)
-
-

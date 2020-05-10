@@ -2,9 +2,10 @@ import torch
 import torch.nn as nn
 import torch.nn.init as init
 
+
 class PairwiseRankingLoss(nn.Module):
-    def __init__(self, margin=0.2, method='max', improved=False, intra=0.5, lamb=0.01):
-        super(PairwiseRankingLoss, self).__init__()
+    def __init__(self, margin=0.2, method="max", improved=False, intra=0.5, lamb=0.01):
+        super().__init__()
         self.margin = margin
         self.method = method
         self.improved = improved
@@ -47,6 +48,33 @@ class PairwiseRankingLoss(nn.Module):
         return loss / n_samples
 
 
+class SPVSELoss(nn.Module):
+    """
+        Semantics-preserving Visual Semantic Embedding
+    """
+
+    def __init__(self, pad_idx, weight_rank=1.0, weight_gen=1.0, weight_rec=1.0):
+        super().__init__()
+        self.ranking_loss = PairwiseRankingLoss()
+        self.generation_loss = nn.CrossEntropyLoss(ignore_index=pad_idx)
+        self.reconstruction_loss = nn.CrossEntropyLoss(ignore_index=pad_idx)
+        self.weight_rank = weight_rank
+        self.weight_gen = weight_gen
+        self.weight_rec = weight_rec
+
+    def forward(self, im_emb, cap_emb, generated, reconstructed, caption):
+        L_rank = self.ranking_loss(im_emb, cap_emb)
+        L_gen = self.generation_loss(generated, caption)
+        L_rec = self.reconstruction_loss(reconstructed, caption)
+        lossval = self.weight_rank * L_rank + self.weight_gen * L_gen + self.weight_rec * L_rec
+        lossdict = {
+            "Ranking loss": L_rank.item(),
+            "Generation loss": L_gen.item(),
+            "Reconstruction loss": L_rec.item(),
+        }
+        return lossval, lossdict
+
+
 # collating function, restrict to 5 captions/image
 def collater(data):
     out = {"image": [], "caption": [], "img_id": [], "ann_id": []}
@@ -58,12 +86,13 @@ def collater(data):
     out["image"] = torch.stack(out["image"])
     return out
 
+
 def weight_init(m):
-    '''
+    """
     Usage:
         model = Model()
         model.apply(weight_init)
-    '''
+    """
     if isinstance(m, nn.Conv1d):
         init.normal_(m.weight.data)
         if m.bias is not None:
@@ -73,7 +102,7 @@ def weight_init(m):
         if m.bias is not None:
             init.normal_(m.bias.data)
     elif isinstance(m, nn.Conv3d):
-        init.kaiming_normal_(m.weight, mode='fan_out', nonlinearity='relu')
+        init.kaiming_normal_(m.weight, mode="fan_out", nonlinearity="relu")
         if m.bias is not None:
             init.normal_(m.bias.data)
     elif isinstance(m, nn.ConvTranspose1d):
@@ -127,6 +156,7 @@ def weight_init(m):
                 init.zeros_(param.data)
     elif isinstance(m, nn.Embedding):
         init.uniform_(m.weight.data)
+
 
 def sec2str(sec):
     if sec < 60:
