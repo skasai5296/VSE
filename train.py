@@ -198,7 +198,12 @@ def main():
         scheduler = optim.lr_scheduler.StepLR(
             optimizer, step_size=args.patience, gamma=args.dampen_factor
         )
-    lossfunc = SPVSELoss(vocab.padidx, weight_rank=1.0, weight_gen=1.0, weight_rec=1.0)
+    lossfunc = SPVSELoss(
+        vocab.padidx,
+        weight_rank=args.weight_rank,
+        weight_gen=args.weight_gen,
+        weight_rec=args.weight_rec,
+    )
 
     if args.checkpoint is not None:
         print(
