@@ -373,7 +373,7 @@ def parse_args():
     )
 
     # configurations of models
-    parser.add_argument("--cnn_type", type=str, default="resnet101", help="architecture of cnn")
+    parser.add_argument("--cnn_type", type=str, default="resnet152", help="architecture of cnn")
     parser.add_argument("--rnn_type", type=str, default="GRU", help="architecture of rnn")
 
     # training config
