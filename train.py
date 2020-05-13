@@ -414,7 +414,7 @@ def parse_args():
         default=128,
         help="batch size. must be a large number for negatives",
     )
-    parser.add_argument("--lr_cnn", type=float, default=2e-5, help="learning rate of cnn")
+    parser.add_argument("--lr_cnn", type=float, default=2e-4, help="learning rate of cnn")
     parser.add_argument("--lr_rnn", type=float, default=2e-4, help="learning rate of rnn")
     parser.add_argument("--lr_gen", type=float, default=2e-4, help="learning rate of cnn")
     parser.add_argument("--lr_rec", type=float, default=2e-4, help="learning rate of rnn")
@@ -429,7 +429,7 @@ def parse_args():
         "--scheduler", type=str, default="Step", help="learning rate scheduler, [Plateau, Step]"
     )
     parser.add_argument(
-        "--patience", type=int, default=15, help="patience of learning rate scheduler"
+        "--patience", type=int, default=30, help="patience of learning rate scheduler"
     )
     parser.add_argument(
         "--weight_decay",
