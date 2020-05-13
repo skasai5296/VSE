@@ -27,7 +27,7 @@ def train(epoch, loader, model, optimizer, lossfunc, vocab, args):
     device = torch.device("cuda" if torch.cuda.is_available() and not args.no_cuda else "cpu")
     metrics = {}
     for it, data in enumerate(loader):
-        if it == 1:
+        if torch.cuda.device_count() > 0 and it == 1:
             print(nvgpu.gpu_info())
         """image, target, index, img_id"""
         image = data["image"]
@@ -180,9 +180,15 @@ def main():
     device = torch.device("cuda" if torch.cuda.is_available() and not args.no_cuda else "cpu")
 
     model = model.to(device)
+    if args.freeze_ep > 0:
+        model.freeze()
+        print("freezing model")
 
     cfgs = [
-        {"params": model.parameters(), "lr": args.lr_cnn},
+        {"params": model.im_enc.parameters(), "lr": args.lr_cnn},
+        {"params": model.cap_enc.parameters(), "lr": args.lr_rnn},
+        {"params": model.cap_gen.parameters(), "lr": args.lr_gen},
+        {"params": model.cap_rec.parameters(), "lr": args.lr_rec},
     ]
     if args.optimizer == "SGD":
         optimizer = optim.SGD(cfgs, momentum=args.momentum, weight_decay=args.weight_decay)
@@ -230,6 +236,9 @@ def main():
 
     assert offset < args.max_epochs
     for ep in range(offset, args.max_epochs):
+        if ep == args.freeze_ep:
+            model.module.unfreeze()
+            print("unfreezing model")
         train(ep + 1, train_loader, model, optimizer, lossfunc, vocab, args)
         data = validate(ep + 1, val_loader, model, vocab, args)
         totalscore = 0
@@ -365,7 +374,7 @@ def parse_args():
 
     # configurations of models
     parser.add_argument("--cnn_type", type=str, default="resnet101", help="architecture of cnn")
-    parser.add_argument("--rnn_type", type=str, default="LSTM", help="architecture of rnn")
+    parser.add_argument("--rnn_type", type=str, default="GRU", help="architecture of rnn")
 
     # training config
     parser.add_argument("--n_cpu", type=int, default=8, help="number of threads for dataloading")
@@ -381,14 +390,14 @@ def parse_args():
         "--imp_weight", type=float, default=1e-2, help="weight for improved ranking loss"
     )
     parser.add_argument(
-        "--freeze_ep", type=int, default=15, help="at which epoch to unfreeze the CNN encoder"
+        "--freeze_ep", type=int, default=30, help="for how many epochs to freeze the image encoder"
     )
     parser.add_argument("--emb_size", type=int, default=300, help="embedding size of vocabulary")
     parser.add_argument(
         "--out_size", type=int, default=1024, help="embedding size for output vectors"
     )
     parser.add_argument(
-        "--max_epochs", type=int, default=50, help="max number of epochs to train for"
+        "--max_epochs", type=int, default=45, help="max number of epochs to train for"
     )
     parser.add_argument("--max_len", type=int, default=30, help="max length of sentences")
     parser.add_argument("--log_every", type=int, default=10, help="log every x iterations")
@@ -405,8 +414,10 @@ def parse_args():
         default=128,
         help="batch size. must be a large number for negatives",
     )
-    parser.add_argument("--lr_cnn", type=float, default=2e-4, help="learning rate of cnn")
+    parser.add_argument("--lr_cnn", type=float, default=2e-5, help="learning rate of cnn")
     parser.add_argument("--lr_rnn", type=float, default=2e-4, help="learning rate of rnn")
+    parser.add_argument("--lr_gen", type=float, default=2e-4, help="learning rate of cnn")
+    parser.add_argument("--lr_rec", type=float, default=2e-4, help="learning rate of rnn")
     parser.add_argument("--momentum", type=float, default=0.9, help="momentum for SGD")
     parser.add_argument("--alpha", type=float, default=0.99, help="alpha for RMSprop")
     parser.add_argument("--beta1", type=float, default=0.9, help="beta1 for Adam")

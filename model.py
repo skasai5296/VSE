@@ -89,14 +89,19 @@ class VSE(nn.Module):
         super().__init__()
         self.im_enc = ImageEncoder(out_size, cnn_type, pretrained)
         self.cap_enc = CaptionEncoder(vocab_size, emb_size, out_size, rnn_type, pad_idx)
-        self.cap_dec = SimpleDecoder(
-            out_size, emb_size, out_size, vocab_size, max_seqlen, dropout_prob, ss_prob, bos_idx,
-        )
 
     def forward(self, image, caption, lengths):
         im_emb = self.im_enc(image) if image is not None else None
         cap_emb = self.cap_enc(caption, lengths) if caption is not None else None
         return im_emb, cap_emb
+
+    def freeze(self):
+        for param in self.im_enc.cnn.parameters():
+            param.requires_grad = False
+
+    def unfreeze(self):
+        for param in self.im_enc.cnn.parameters():
+            param.requires_grad = True
 
 
 class SimpleDecoder(nn.Module):
@@ -226,6 +231,14 @@ class SPVSE(nn.Module):
         else:
             cap_emb, rec = None, None
         return im_emb, cap_emb, gen, rec
+
+    def freeze(self):
+        for param in self.im_enc.cnn.parameters():
+            param.requires_grad = False
+
+    def unfreeze(self):
+        for param in self.im_enc.cnn.parameters():
+            param.requires_grad = True
 
 
 if __name__ == "__main__":
