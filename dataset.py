@@ -20,11 +20,7 @@ class CocoDataset(Dataset):
     """COCO Custom Dataset compatible with torch.utils.data.DataLoader."""
 
     def __init__(
-        self,
-        root,
-        imgdir="train2017",
-        jsonfile="annotations/captions_train2017.json",
-        transform=None,
+        self, root, split="train", transform=None,
     ):
         """
         Args:
@@ -32,6 +28,11 @@ class CocoDataset(Dataset):
             json: coco annotation file path.
             transform: transformer for image.
         """
+        assert split in ("train", "val", "test")
+        if split == "test":
+            raise NotImplementedError
+        imgdir = f"{split}2017"
+        jsonfile = f"annotations/captions_{split}2017.json"
         self.coco = COCO(os.path.join(root, jsonfile))
         self.img_dir = os.path.join(root, imgdir)
 
@@ -44,6 +45,8 @@ class CocoDataset(Dataset):
         img_id = self.imgids[index]
         ann_id = self.annids[index]
         path = self.coco.loadImgs(img_id)[0]["file_name"]
+        if not os.path.exists(os.path.join(self.img_dir, path)):
+            print(os.path.join(self.img_dir, path))
         image = Image.open(os.path.join(self.img_dir, path)).convert("RGB")
         caption = [obj["caption"] for obj in self.coco.loadAnns(ann_id)]
 

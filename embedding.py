@@ -1,36 +1,45 @@
-import sys, os, glob
 import argparse
-import time
+import glob
+import os
 import random
+import sys
+import time
 
-import numpy as np
 import matplotlib.pyplot as plt
+import numpy as np
 import torch
 import torch.nn as nn
-from torch.utils.data import DataLoader
 import torchvision
 import torchvision.transforms as transforms
-from sklearn.manifold import TSNE
 from sklearn.decomposition import PCA
+from sklearn.manifold import TSNE
+from torch.utils.data import DataLoader
 
 from dataset import CocoDataset, EmbedDataset
-from utils import sec2str, collater
-from model import ImageEncoder, CaptionEncoder
+from model import CaptionEncoder, ImageEncoder
+from utils import collater, sec2str
 from vocab import Vocabulary
 
 
 def main():
     args = parse_args()
 
-    transform = transforms.Compose([
-        transforms.Resize((args.imsize, args.imsize)),
-        transforms.ToTensor(),
-        transforms.Normalize(mean=[0.485, 0.456, 0.406],
-                             std=[0.229, 0.224, 0.225])
-        ])
-    if args.dataset == 'coco':
-        val_dset = CocoDataset(root=args.root_path, imgdir='val2017', jsonfile='annotations/captions_val2017.json', transform=transform)
-    val_loader = DataLoader(val_dset, batch_size=args.batch_size, shuffle=False, num_workers=args.n_cpu, collate_fn=collater)
+    transform = transforms.Compose(
+        [
+            transforms.Resize((args.imsize, args.imsize)),
+            transforms.ToTensor(),
+            transforms.Normalize(mean=[0.485, 0.456, 0.406], std=[0.229, 0.224, 0.225]),
+        ]
+    )
+    if args.dataset == "coco":
+        val_dset = CocoDataset(root=args.root_path, split="val", transform=transform,)
+    val_loader = DataLoader(
+        val_dset,
+        batch_size=args.batch_size,
+        shuffle=False,
+        num_workers=args.n_cpu,
+        collate_fn=collater,
+    )
 
     vocab = Vocabulary(max_len=args.max_len)
     vocab.load_vocab(args.vocab_path)
@@ -51,7 +60,7 @@ def main():
 
     begin = time.time()
     dset = EmbedDataset(val_loader, imenc, capenc, vocab, args)
-    print("database created | {} ".format(sec2str(time.time()-begin)), flush=True)
+    print("database created | {} ".format(sec2str(time.time() - begin)), flush=True)
 
     savedir = os.path.join("out", args.config_name)
     if not os.path.exists(savedir):
@@ -71,6 +80,7 @@ def main():
     dimension_reduction(emb_file, save_file, method=args.method)
     plot_embeddings(save_file, n_i, vis_file, method=args.method)
 
+
 def dimension_reduction(numpyfile, dstfile, method="PCA"):
     all = np.load(numpyfile)
     begin = time.time()
@@ -81,9 +91,10 @@ def dimension_reduction(numpyfile, dstfile, method="PCA"):
         all = PCA(n_components=2).fit_transform(all)
     else:
         raise NotImplementedError()
-    print("done | {} ".format(sec2str(time.time()-begin)), flush=True)
+    print("done | {} ".format(sec2str(time.time() - begin)), flush=True)
     np.save(dstfile, all)
     print("saved {} embeddings to {}".format(method, dstfile), flush=True)
+
 
 def plot_embeddings(numpyfile, n_v, out_file, method="PCA"):
     all = np.load(numpyfile)
@@ -98,43 +109,59 @@ def plot_embeddings(numpyfile, n_v, out_file, method="PCA"):
     plt.savefig(out_file)
     print("saved {} plot to {}".format(method, out_file), flush=True)
 
+
 def parse_args():
     parser = argparse.ArgumentParser()
 
     # configurations of dataset (paths)
-    parser.add_argument('--dataset', type=str, default='coco')
-    parser.add_argument('--root_path', type=str, default='/groups1/gaa50131/datasets/MSCOCO')
-    parser.add_argument('--vocab_path', type=str, default='captions_train2017.txt')
-    parser.add_argument('--method', type=str, default="PCA", help='Name of dimensionality reduction method, should be {T-SNE | PCA}')
-    parser.add_argument('--config_name', type=str, default="embedding", help='name of config, filename where to save')
+    parser.add_argument("--dataset", type=str, default="coco")
+    parser.add_argument("--root_path", type=str, default="/groups1/gaa50131/datasets/MSCOCO")
+    parser.add_argument("--vocab_path", type=str, default="captions_train2017.txt")
+    parser.add_argument(
+        "--method",
+        type=str,
+        default="PCA",
+        help="Name of dimensionality reduction method, should be {T-SNE | PCA}",
+    )
+    parser.add_argument(
+        "--config_name",
+        type=str,
+        default="embedding",
+        help="name of config, filename where to save",
+    )
 
     # configurations of models
-    parser.add_argument('--cnn_type', type=str, default="resnet152")
-    parser.add_argument('--rnn_type', type=str, default="GRU")
+    parser.add_argument("--cnn_type", type=str, default="resnet152")
+    parser.add_argument("--rnn_type", type=str, default="GRU")
 
     # training config
-    parser.add_argument('--n_cpu', type=int, default=8)
-    parser.add_argument('--emb_size', type=int, default=300, help="embedding size of vocabulary")
-    parser.add_argument('--out_size', type=int, default=1024, help="embedding size for output vectors")
-    parser.add_argument('--max_len', type=int, default=30)
-    parser.add_argument('--no_cuda', action='store_true', help="disable gpu training")
+    parser.add_argument("--n_cpu", type=int, default=8)
+    parser.add_argument("--emb_size", type=int, default=300, help="embedding size of vocabulary")
+    parser.add_argument(
+        "--out_size", type=int, default=1024, help="embedding size for output vectors"
+    )
+    parser.add_argument("--max_len", type=int, default=30)
+    parser.add_argument("--no_cuda", action="store_true", help="disable gpu training")
 
     # hyperparams
-    parser.add_argument('--imsize_pre', type=int, default=256, help="to what size to crop the image")
-    parser.add_argument('--imsize', type=int, default=224, help="image size to resize on")
-    parser.add_argument('--batch_size', type=int, default=128, help="batch size. irrelevant")
+    parser.add_argument(
+        "--imsize_pre", type=int, default=256, help="to what size to crop the image"
+    )
+    parser.add_argument("--imsize", type=int, default=224, help="image size to resize on")
+    parser.add_argument("--batch_size", type=int, default=128, help="batch size. irrelevant")
 
     # retrieval config
-    parser.add_argument('--checkpoint', type=str, required=True, help='Path to checkpoint, will load model from there')
-
+    parser.add_argument(
+        "--checkpoint",
+        type=str,
+        required=True,
+        help="Path to checkpoint, will load model from there",
+    )
 
     args = parser.parse_args()
 
     return args
 
-if __name__ == '__main__':
+
+if __name__ == "__main__":
     main()
-
-
-
-

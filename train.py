@@ -140,13 +140,8 @@ def main():
         ]
     )
     if args.dataset == "coco":
-        train_dset = CocoDataset(root=args.root_path, transform=train_transform)
-        val_dset = CocoDataset(
-            root=args.root_path,
-            imgdir="val2017",
-            jsonfile="annotations/captions_val2017.json",
-            transform=val_transform,
-        )
+        train_dset = CocoDataset(root=args.root_path, split="train", transform=train_transform)
+        val_dset = CocoDataset(root=args.root_path, split="val", transform=val_transform,)
     train_loader = DataLoader(
         train_dset,
         batch_size=args.batch_size,
